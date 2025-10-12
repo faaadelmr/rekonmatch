@@ -29,9 +29,11 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type Row } from "@/lib/mock-data";
-import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy } from "lucide-react";
+import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 
 type AppState = 'initial' | 'loaded';
 interface ExcelData {
@@ -62,7 +64,7 @@ export default function Home() {
       try {
         const fileContent = e.target?.result;
         if (!fileContent) {
-          throw new Error("Failed to read file content.");
+          throw new Error("Gagal membaca konten file.");
         }
         const workbook = XLSX.read(fileContent, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
@@ -70,7 +72,7 @@ export default function Home() {
         const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as (string | number)[][];
         
         if (json.length === 0) {
-            throw new Error("Excel file is empty.");
+            throw new Error("File Excel kosong.");
         }
 
         const headers = json[0].map(String);
@@ -91,15 +93,14 @@ export default function Home() {
         setFilteredResults(null);
         setAppState('loaded');
       } catch (error) {
-        console.error("Error processing Excel file:", error);
+        console.error("Kesalahan memproses file Excel:", error);
         toast({
           variant: "destructive",
-          title: "Error Reading File",
-          description: "There was a problem processing your Excel file. Please ensure it's a valid format.",
+          title: "Kesalahan Membaca File",
+          description: "Terjadi masalah saat memproses file Excel Anda. Pastikan formatnya valid.",
         });
       } finally {
         setIsLoadingFile(false);
-        // Reset file input to allow re-uploading the same file
         if(fileInputRef.current) {
             fileInputRef.current.value = "";
         }
@@ -110,8 +111,8 @@ export default function Home() {
         setIsLoadingFile(false);
         toast({
             variant: "destructive",
-            title: "File Read Error",
-            description: "Could not read the selected file.",
+            title: "Kesalahan Membaca File",
+            description: "Tidak dapat membaca file yang dipilih.",
         });
     };
 
@@ -170,10 +171,10 @@ export default function Home() {
 
   const handleRunQuery = useCallback(() => {
     if (!data) return;
-
     setIsProcessing(true);
+    
     setTimeout(() => {
-        const activeSearchCols = Object.keys(searchCriteria).filter(
+        const activeSearchCols = Array.from(searchColumns).filter(
             (col) => searchCriteria[col]?.trim()
         );
 
@@ -186,63 +187,70 @@ export default function Home() {
         const searchTermsByCol: Record<string, string[]> = {};
         let longestSearchListCol: string | null = null;
         let maxTerms = 0;
+        let mainSearchTerms: string[] = [];
 
+        // Determine the column with the most search terms to use as the primary loop
         activeSearchCols.forEach(col => {
             const terms = searchCriteria[col].split('\n').map(t => t.trim()).filter(Boolean);
             searchTermsByCol[col] = terms;
             if (terms.length > maxTerms) {
                 maxTerms = terms.length;
                 longestSearchListCol = col;
+                mainSearchTerms = terms;
             }
         });
         
         if (!longestSearchListCol) {
+            // Handle case where there are search criteria but they are all empty strings
             setFilteredResults(data.rows);
             setIsProcessing(false);
             return;
         }
 
-        const primarySearchTerms = searchTermsByCol[longestSearchListCol];
         const results: Row[] = [];
-
-        primarySearchTerms.forEach(term => {
+        const foundRowsTracker = new Set<Row>();
+        
+        mainSearchTerms.forEach((term, termIndex) => {
             const termLower = term.toLowerCase();
             const matchingRows = data.rows.filter(row => {
-                // Check if the row matches the primary term
+                // Avoid re-adding rows that have already been matched
+                if (foundRowsTracker.has(row)) return false;
+
                 const primaryColValue = String(row[longestSearchListCol!]).toLowerCase();
                 if (!primaryColValue.startsWith(termLower)) {
                     return false;
                 }
 
-                // Check if the row also matches all other search criteria for the same "line" (optional)
-                // This simplified version only filters based on the primary column term.
-                // A more complex logic could try to match other columns based on index, but that's ambiguous.
-                
-                // For now, let's also check if other column criteria are met if they exist
-                 const otherCols = activeSearchCols.filter(c => c !== longestSearchListCol);
-                 return otherCols.every(col => {
-                    const otherColTerms = searchCriteria[col].split('\n').map(t => t.trim().toLowerCase()).filter(Boolean);
+                // Check other criteria
+                return activeSearchCols.every(col => {
+                    if (col === longestSearchListCol) return true;
+                    
+                    const otherColTerms = searchTermsByCol[col];
+                    if (otherColTerms.length === 0) return true;
+
                     const rowValue = String(row[col]).toLowerCase();
-                    // If there are search terms for this other column, check if any of them match.
-                    if (otherColTerms.length > 0) {
-                        return otherColTerms.some(otherTerm => rowValue.startsWith(otherTerm));
-                    }
-                    // If no search terms for this other col, it's a match for this column
-                    return true;
-                 });
+                    // Assumption: The other criteria might not be line-by-line, so we check if any term matches
+                    // If a line-by-line match is needed, we would need to get the term at `termIndex`
+                    return otherColTerms.some(otherTerm => rowValue.startsWith(otherTerm.toLowerCase()));
+                });
             });
 
             if (matchingRows.length > 0) {
+                matchingRows.forEach(row => foundRowsTracker.add(row));
                 results.push(...matchingRows);
             } else {
                 const notFoundRow: Row = { __isNotFound: 1 };
                 data.headers.forEach(header => {
                     if (header === longestSearchListCol) {
                         notFoundRow[header] = term;
+                    } else if (searchCriteria[header]) {
+                       const otherTerms = searchCriteria[header].split('\n');
+                       notFoundRow[header] = otherTerms[termIndex] || 'data tidak ditemukan';
                     } else {
-                        notFoundRow[header] = 'data tidak ditemukan';
+                        notFoundRow[header] = '';
                     }
                 });
+
                 results.push(notFoundRow);
             }
         });
@@ -250,7 +258,7 @@ export default function Home() {
         setFilteredResults(results);
         setIsProcessing(false);
     }, 500);
-  }, [data, searchCriteria]);
+  }, [data, searchCriteria, searchColumns]);
   
   const orderedDisplayColumns = useMemo(() => {
     if (!data) return [];
@@ -261,16 +269,16 @@ export default function Home() {
     if (!filteredResults || orderedDisplayColumns.length === 0) {
       toast({
         variant: 'destructive',
-        title: 'No Data to Copy',
-        description: 'There is no data in the results table to copy.',
+        title: 'Tidak Ada Data untuk Disalin',
+        description: 'Tidak ada data di tabel hasil untuk disalin.',
       });
       return;
     }
 
     if (filteredResults.length === 0) {
        toast({
-        title: 'No Data to Copy',
-        description: 'The results table is empty.',
+        title: 'Tidak Ada Data untuk Disalin',
+        description: 'Tabel hasil kosong.',
       });
       return;
     }
@@ -278,8 +286,9 @@ export default function Home() {
     const header = orderedDisplayColumns.join('\t');
     const rows = filteredResults.map(row => 
       orderedDisplayColumns.map(col => {
-        // We no longer need to check for __isNotFound here.
-        // We just get the value, or an empty string if it's null/undefined.
+        if (row.__isNotFound) {
+            return String(row[col] ?? 'data tidak ditemukan');
+        }
         return String(row[col] ?? '');
       }).join('\t')
     );
@@ -288,15 +297,15 @@ export default function Home() {
 
     navigator.clipboard.writeText(clipboardText).then(() => {
       toast({
-        title: 'Copied to Clipboard',
-        description: `${filteredResults.length} rows have been copied.`,
+        title: 'Disalin ke Clipboard',
+        description: `${filteredResults.length} baris telah disalin.`,
       });
     }).catch(err => {
-      console.error('Failed to copy text: ', err);
+      console.error('Gagal menyalin teks: ', err);
       toast({
         variant: 'destructive',
-        title: 'Copy Failed',
-        description: 'Could not copy data to clipboard. See console for details.',
+        title: 'Gagal Menyalin',
+        description: 'Tidak dapat menyalin data ke clipboard. Lihat konsol untuk detail.',
       });
     });
   }, [filteredResults, orderedDisplayColumns, toast]);
@@ -304,31 +313,42 @@ export default function Home() {
 
   if (appState === 'initial') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gradient-to-br from-background to-slate-100 dark:to-slate-900">
-        <Card className="w-full max-w-md text-center shadow-2xl animate-fade-in-up">
-          <CardHeader>
-            <div className="mx-auto bg-primary/10 text-primary p-3 rounded-full w-fit">
-               <FileUp className="w-8 h-8" />
+      <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gradient-to-br from-background to-slate-50 dark:from-slate-900 dark:to-slate-950">
+        <div className="absolute top-6 right-6">
+          <ThemeSwitcher />
+        </div>
+        <Card className="w-full max-w-lg text-center shadow-2xl animate-fade-in-up border-0 bg-card/80 dark:bg-card/50 backdrop-blur-lg">
+          <CardHeader className="pb-4">
+            <div className="mx-auto bg-primary/10 text-primary p-4 rounded-full w-fit mb-4">
+               <FileUp className="w-10 h-10" />
             </div>
-            <CardTitle className="text-3xl font-bold mt-4">Excel Query Tool</CardTitle>
+            <CardTitle className="text-4xl font-bold mt-2">RekonMatch</CardTitle>
             <CardDescription className="text-lg text-muted-foreground pt-2">
-              Upload your Excel file to start querying and filtering your data instantly.
+              Unggah file Excel Anda untuk mulai memfilter data secara instan.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
+            <Alert variant="destructive" className="text-left bg-amber-500/10 border-amber-500/30 text-amber-200">
+                <AlertTriangle className="h-4 w-4 !text-amber-500" />
+                <AlertTitle className="text-amber-400 font-semibold text-sm">Penting</AlertTitle>
+                <AlertDescription className="text-amber-400/80">
+                    Pastikan header atau judul kolom data Anda berada pada <strong className="font-semibold text-amber-300">baris pertama</strong> di file Excel.
+                </AlertDescription>
+            </Alert>
+
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xlsx, .xls, .csv" />
-            <Button size="lg" className="w-full text-lg" onClick={handleUploadClick} disabled={isLoadingFile}>
+            <Button size="lg" className="w-full text-lg py-7" onClick={handleUploadClick} disabled={isLoadingFile}>
               {isLoadingFile ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                <Loader2 className="mr-2 h-6 w-6 animate-spin" />
               ) : (
-                <Upload className="mr-2 h-5 w-5" />
+                <Upload className="mr-2 h-6 w-6" />
               )}
-              Upload Excel File
+              Pilih File Excel
             </Button>
           </CardContent>
           <CardFooter>
              <p className="text-xs text-muted-foreground w-full">
-              Supports .xlsx, .xls, and .csv files. All processing is done in your browser.
+              Mendukung .xlsx, .xls, .csv. Semua pemrosesan dilakukan di browser Anda.
             </p>
           </CardFooter>
         </Card>
@@ -341,32 +361,34 @@ export default function Home() {
       <header className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <TableIcon className="w-8 h-8 text-primary" />
-          <h1 className="text-3xl font-bold">Excel Query Tool</h1>
+          <h1 className="text-3xl font-bold">RekonMatch</h1>
         </div>
-        <Button variant="outline" onClick={handleReset}>
-          <X className="w-4 h-4 mr-2" />
-          Start Over
-        </Button>
+        <div className="flex items-center gap-2">
+          <ThemeSwitcher />
+          <Button variant="outline" onClick={handleReset}>
+            <X className="w-4 h-4 mr-2" />
+            Mulai Ulang
+          </Button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Configuration Section */}
         <div className="xl:col-span-3">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-2xl">Query Builder</CardTitle>
-                    <CardDescription>Select columns, input criteria, and run your query.</CardDescription>
+                    <CardTitle className="text-2xl">Penyusun Kueri</CardTitle>
+                    <CardDescription>Pilih kolom, masukkan kriteria, dan jalankan kueri Anda.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <Card className="flex flex-col">
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2"><ListFilter className="w-5 h-5" /> Search &amp; Display</CardTitle>
+                                <CardTitle className="flex items-center gap-2"><ListFilter className="w-5 h-5" /> Kolom</CardTitle>
                             </CardHeader>
                             <CardContent className="flex-grow">
                                 <Accordion type="multiple" defaultValue={['search-cols', 'display-cols']} className="w-full">
                                     <AccordionItem value="search-cols">
-                                        <AccordionTrigger>Search Columns</AccordionTrigger>
+                                        <AccordionTrigger>Kolom Pencarian</AccordionTrigger>
                                         <AccordionContent className="space-y-2 max-h-48 overflow-y-auto pr-4">
                                             {data?.headers.map(col => (
                                                 <div key={`search-${col}`} className="flex items-center space-x-2">
@@ -377,11 +399,11 @@ export default function Home() {
                                         </AccordionContent>
                                     </AccordionItem>
                                     <AccordionItem value="display-cols">
-                                        <AccordionTrigger>Display Columns</AccordionTrigger>
+                                        <AccordionTrigger>Kolom Tampilan</AccordionTrigger>
                                         <AccordionContent className="space-y-2">
                                             <div className="flex items-center space-x-2 pb-2 border-b">
                                                 <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={displayColumns.size === data?.headers.length} />
-                                                <Label htmlFor="display-all" className="font-semibold">Select All</Label>
+                                                <Label htmlFor="display-all" className="font-semibold">Pilih Semua</Label>
                                             </div>
                                             <div className="max-h-48 overflow-y-auto pr-4 pt-2">
                                                 {data?.headers.map(col => (
@@ -399,7 +421,7 @@ export default function Home() {
 
                         <Card className="flex flex-col">
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2"><Search className="w-5 h-5"/>Search Criteria</CardTitle>
+                                <CardTitle className="flex items-center gap-2"><Search className="w-5 h-5"/>Kriteria Pencarian</CardTitle>
                             </CardHeader>
                             <CardContent className="flex-grow space-y-4 overflow-y-auto">
                                 {Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map(col => (
@@ -407,13 +429,13 @@ export default function Home() {
                                         <Label htmlFor={`textarea-${col}`} className="font-semibold">{col}</Label>
                                         <Textarea
                                             id={`textarea-${col}`}
-                                            placeholder={`Enter values for ${col}, one per line...`}
+                                            placeholder={`Masukkan nilai untuk ${col}, satu per baris...`}
                                             value={searchCriteria[col] || ''}
                                             onChange={e => setSearchCriteria(prev => ({ ...prev, [col]: e.target.value }))}
                                             className="h-24 resize-y"
                                         />
                                     </div>
-                                )) : <p className="text-sm text-muted-foreground pt-4 text-center">Select a search column to add criteria.</p>}
+                                )) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}
                             </CardContent>
                         </Card>
                         
@@ -425,7 +447,7 @@ export default function Home() {
                                     ) : (
                                         <Search className="mr-2 h-6 w-6" />
                                     )}
-                                    Run Query
+                                    Jalankan Kueri
                                 </Button>
                             </CardContent>
                         </Card>
@@ -435,19 +457,18 @@ export default function Home() {
         </div>
 
 
-        {/* Results Section */}
         <div className="xl:col-span-3">
             <Card className="shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle className="text-2xl flex items-center gap-2"><Columns className="w-6 h-6" /> Results</CardTitle>
+                        <CardTitle className="text-2xl flex items-center gap-2"><Columns className="w-6 h-6" /> Hasil</CardTitle>
                         <CardDescription>
-                            {filteredResults ? `${filteredResults.length} matching records found.` : 'Your query results will appear here.'}
+                            {filteredResults ? `${filteredResults.length} data yang cocok ditemukan.` : 'Hasil kueri Anda akan muncul di sini.'}
                         </CardDescription>
                     </div>
                     <Button variant="outline" onClick={handleCopyResults} disabled={!filteredResults || filteredResults.length === 0}>
                         <Copy className="w-4 h-4 mr-2" />
-                        Copy Results
+                        Salin Hasil
                     </Button>
                 </CardHeader>
                 <CardContent>
@@ -456,7 +477,7 @@ export default function Home() {
                             <TableHeader>
                                 <TableRow>
                                     {orderedDisplayColumns.map(col => (
-                                        <TableHead key={`header-${col}`} className="font-bold">{col}</TableHead>
+                                        <TableHead key={`header-${col}`} className="font-bold bg-muted/50">{col}</TableHead>
                                     ))}
                                 </TableRow>
                             </TableHeader>
@@ -465,14 +486,14 @@ export default function Home() {
                                     filteredResults.map((row, index) => (
                                         <TableRow key={index} className={cn(row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30")}>
                                             {orderedDisplayColumns.map(col => (
-                                                <TableCell key={`${index}-${col}`}>{String(row[col])}</TableCell>
+                                                <TableCell key={`${index}-${col}`}>{String(row[col] ?? '')}</TableCell>
                                             ))}
                                         </TableRow>
                                     ))
                                 ) : (
                                     <TableRow>
                                         <TableCell colSpan={orderedDisplayColumns.length || 1} className="h-48 text-center text-muted-foreground">
-                                            {filteredResults === null ? "Run a query to see your data." : "No results found."}
+                                            {filteredResults === null ? "Jalankan kueri untuk melihat data Anda." : "Tidak ada hasil yang ditemukan."}
                                         </TableCell>
                                     </TableRow>
                                 )}
