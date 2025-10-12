@@ -324,7 +324,7 @@ export default function Home() {
             </div>
             <CardTitle className="text-4xl font-bold mt-2">RekonMatch</CardTitle>
             <CardDescription className="text-lg text-muted-foreground pt-2">
-              Unggah file Excel Anda untuk mulai memfilter data secara instan.
+              Unggah file Excel Anda untuk mulai memfilter multiple data.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -505,5 +505,7 @@ export default function Home() {
         </div>
       </div>
     </main>
+    
+
   );
 }
