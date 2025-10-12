@@ -22,12 +22,12 @@ export default function RootLayout({
       <body className="font-body antialiased">
         {children}
         <Toaster />
-      </body>
-      <footer className="bottom-0 left-0 w-full p-4 text-center">
+        <footer className="bottom-0 left-0 w-full p-4 text-center">
          <p className="text-xs text-muted-foreground">
            &copy; {new Date().getFullYear()} <a href="https://faaadelmr.pages.dev" className="font-bold text-primary hover:text-primary/80">faaadelmr</a>
          </p>
        </footer>
+      </body>
     </html>
   );
 }

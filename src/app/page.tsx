@@ -376,7 +376,7 @@ export default function Home() {
         <div className="xl:col-span-3">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-2xl">Penyusun Kueri</CardTitle>
+                    <CardTitle className="text-2xl">Susunan Kueri</CardTitle>
                     <CardDescription>Pilih kolom, masukkan kriteria, dan jalankan kueri Anda.</CardDescription>
                 </CardHeader>
                 <CardContent>
