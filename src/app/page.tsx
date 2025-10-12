@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback, type FC } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Accordion,
   AccordionContent,
@@ -27,24 +28,97 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { mockData, type MockData, type Row } from "@/lib/mock-data";
-import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns } from "lucide-react";
+import { type Row } from "@/lib/mock-data";
+import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload } from "lucide-react";
+import { useToast } from '@/hooks/use-toast';
 
 type AppState = 'initial' | 'loaded';
+interface ExcelData {
+    headers: string[];
+    rows: Row[];
+}
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>('initial');
-  const [data, setData] = useState<MockData | null>(null);
+  const [data, setData] = useState<ExcelData | null>(null);
   const [searchColumns, setSearchColumns] = useState<Set<string>>(new Set());
   const [displayColumns, setDisplayColumns] = useState<Set<string>>(new Set());
   const [searchCriteria, setSearchCriteria] = useState<Record<string, string>>({});
   const [filteredResults, setFilteredResults] = useState<Row[] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingFile, setIsLoadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
-  const handleLoadData = () => {
-    setData(mockData);
-    setDisplayColumns(new Set(mockData.headers));
-    setAppState('loaded');
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsLoadingFile(true);
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const fileContent = e.target?.result;
+        if (!fileContent) {
+          throw new Error("Failed to read file content.");
+        }
+        const workbook = XLSX.read(fileContent, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as (string | number)[][];
+        
+        if (json.length === 0) {
+            throw new Error("Excel file is empty.");
+        }
+
+        const headers = json[0].map(String);
+        const rows = json.slice(1).map(rowArray => {
+          const rowObject: Row = {};
+          headers.forEach((header, index) => {
+            rowObject[header] = rowArray[index] ?? '';
+          });
+          return rowObject;
+        });
+
+        const processedData = { headers, rows };
+        
+        setData(processedData);
+        setDisplayColumns(new Set(processedData.headers));
+        setSearchColumns(new Set());
+        setSearchCriteria({});
+        setFilteredResults(null);
+        setAppState('loaded');
+      } catch (error) {
+        console.error("Error processing Excel file:", error);
+        toast({
+          variant: "destructive",
+          title: "Error Reading File",
+          description: "There was a problem processing your Excel file. Please ensure it's a valid format.",
+        });
+      } finally {
+        setIsLoadingFile(false);
+        // Reset file input to allow re-uploading the same file
+        if(fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+      }
+    };
+    
+    reader.onerror = () => {
+        setIsLoadingFile(false);
+        toast({
+            variant: "destructive",
+            title: "File Read Error",
+            description: "Could not read the selected file.",
+        });
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleReset = () => {
@@ -97,7 +171,6 @@ export default function Home() {
     if (!data) return;
 
     setIsProcessing(true);
-    // Simulate async operation
     setTimeout(() => {
       const activeSearchCols = Object.keys(searchCriteria).filter(
         (col) => searchCriteria[col]?.trim()
@@ -142,18 +215,23 @@ export default function Home() {
             </div>
             <CardTitle className="text-3xl font-bold mt-4">Excel Query Tool</CardTitle>
             <CardDescription className="text-lg text-muted-foreground pt-2">
-              Upload your Excel file and start filtering your data in seconds.
+              Upload your Excel file to start querying and filtering your data instantly.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button size="lg" className="w-full text-lg" onClick={handleLoadData}>
-              <span className="mr-2">🚀</span>
-              Get Started with Mock Data
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xlsx, .xls, .csv" />
+            <Button size="lg" className="w-full text-lg" onClick={handleUploadClick} disabled={isLoadingFile}>
+              {isLoadingFile ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-5 w-5" />
+              )}
+              Upload Excel File
             </Button>
           </CardContent>
           <CardFooter>
              <p className="text-xs text-muted-foreground w-full">
-              This demo uses mock data. File upload functionality is not implemented.
+              Supports .xlsx, .xls, and .csv files. All processing is done in your browser.
             </p>
           </CardFooter>
         </Card>
@@ -283,13 +361,13 @@ export default function Home() {
                                     filteredResults.map((row, index) => (
                                         <TableRow key={index}>
                                             {orderedDisplayColumns.map(col => (
-                                                <TableCell key={`${index}-${col}`}>{row[col]}</TableCell>
+                                                <TableCell key={`${index}-${col}`}>{String(row[col])}</TableCell>
                                             ))}
                                         </TableRow>
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={orderedDisplayColumns.length} className="h-48 text-center text-muted-foreground">
+                                        <TableCell colSpan={orderedDisplayColumns.length || 1} className="h-48 text-center text-muted-foreground">
                                             {filteredResults === null ? "Run a query to see your data." : "No results found."}
                                         </TableCell>
                                     </TableRow>
