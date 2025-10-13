@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Accordion,
@@ -29,11 +29,15 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { type Row } from "@/lib/mock-data";
-import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle } from "lucide-react";
+import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle, ArrowUp, ArrowDown, Save, Trash2, CheckSquare } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+
 
 type AppState = 'initial' | 'loaded';
 interface ExcelData {
@@ -45,13 +49,68 @@ export default function Home() {
   const [appState, setAppState] = useState<AppState>('initial');
   const [data, setData] = useState<ExcelData | null>(null);
   const [searchColumns, setSearchColumns] = useState<Set<string>>(new Set());
-  const [displayColumns, setDisplayColumns] = useState<Set<string>>(new Set());
+  const [displayColumns, setDisplayColumns] = useState<string[]>([]);
   const [searchCriteria, setSearchCriteria] = useState<Record<string, string>>({});
   const [filteredResults, setFilteredResults] = useState<Row[] | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const [displayTemplates, setDisplayTemplates] = useState<Record<string, string[]>>({});
+  const [newTemplateName, setNewTemplateName] = useState('');
+
+  useEffect(() => {
+    try {
+      const savedTemplates = localStorage.getItem('rekonMatch_displayTemplates');
+      if (savedTemplates) {
+        setDisplayTemplates(JSON.parse(savedTemplates));
+      }
+    } catch (error) {
+      console.error("Gagal memuat template dari localStorage:", error);
+    }
+  }, []);
+
+  const handleSaveTemplate = () => {
+    if (!newTemplateName.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Nama Template Kosong',
+        description: 'Harap masukkan nama untuk template Anda.',
+      });
+      return;
+    }
+    const updatedTemplates = { ...displayTemplates, [newTemplateName]: displayColumns };
+    setDisplayTemplates(updatedTemplates);
+    localStorage.setItem('rekonMatch_displayTemplates', JSON.stringify(updatedTemplates));
+    setNewTemplateName('');
+    toast({
+      title: 'Template Disimpan',
+      description: `Template "${newTemplateName}" telah berhasil disimpan.`,
+    });
+  };
+
+  const handleLoadTemplate = (templateName: string) => {
+    if (displayTemplates[templateName]) {
+      setDisplayColumns(displayTemplates[templateName]);
+      toast({
+        title: 'Template Dimuat',
+        description: `Template "${templateName}" telah diterapkan.`,
+      });
+    }
+  };
+
+  const handleDeleteTemplate = (templateName: string) => {
+    const { [templateName]: _, ...remainingTemplates } = displayTemplates;
+    setDisplayTemplates(remainingTemplates);
+    localStorage.setItem('rekonMatch_displayTemplates', JSON.stringify(remainingTemplates));
+    toast({
+      variant: 'destructive',
+      title: 'Template Dihapus',
+      description: `Template "${templateName}" telah dihapus.`,
+    });
+  };
+
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -87,7 +146,7 @@ export default function Home() {
         const processedData = { headers, rows };
         
         setData(processedData);
-        setDisplayColumns(new Set(processedData.headers));
+        setDisplayColumns(processedData.headers);
         setSearchColumns(new Set());
         setSearchCriteria({});
         setFilteredResults(null);
@@ -127,7 +186,7 @@ export default function Home() {
     setAppState('initial');
     setData(null);
     setSearchColumns(new Set());
-    setDisplayColumns(new Set());
+    setDisplayColumns([]);
     setSearchCriteria({});
     setFilteredResults(null);
   };
@@ -151,22 +210,33 @@ export default function Home() {
 
   const handleDisplayColumnToggle = (column: string, checked: boolean) => {
     setDisplayColumns(prev => {
-      const newSet = new Set(prev);
       if (checked) {
-        newSet.add(column);
+        // Add column if it's not already there
+        return prev.includes(column) ? prev : [...prev, column];
       } else {
-        newSet.delete(column);
+        // Remove column
+        return prev.filter(c => c !== column);
       }
-      return newSet;
     });
   };
   
   const handleSelectAllDisplayColumns = (checked: boolean) => {
     if (checked && data) {
-      setDisplayColumns(new Set(data.headers));
+      setDisplayColumns(data.headers);
     } else {
-      setDisplayColumns(new Set());
+      setDisplayColumns([]);
     }
+  };
+  
+  const moveDisplayColumn = (index: number, direction: 'up' | 'down') => {
+    const newDisplayColumns = [...displayColumns];
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= newDisplayColumns.length) return;
+
+    const temp = newDisplayColumns[index];
+    newDisplayColumns[index] = newDisplayColumns[newIndex];
+    newDisplayColumns[newIndex] = temp;
+    setDisplayColumns(newDisplayColumns);
   };
 
   const handleRunQuery = useCallback(() => {
@@ -212,8 +282,9 @@ export default function Home() {
         
         mainSearchTerms.forEach((term, termIndex) => {
             const termLower = term.toLowerCase();
+            let matchFoundForTerm = false;
+
             const matchingRows = data.rows.filter(row => {
-                // Avoid re-adding rows that have already been matched
                 if (foundRowsTracker.has(row)) return false;
 
                 const primaryColValue = String(row[longestSearchListCol!]).toLowerCase();
@@ -221,24 +292,31 @@ export default function Home() {
                     return false;
                 }
 
-                // Check other criteria
                 return activeSearchCols.every(col => {
                     if (col === longestSearchListCol) return true;
                     
                     const otherColTerms = searchTermsByCol[col];
                     if (otherColTerms.length === 0) return true;
+                    if (otherColTerms.length <= termIndex) return true;
 
                     const rowValue = String(row[col]).toLowerCase();
-                    // Assumption: The other criteria might not be line-by-line, so we check if any term matches
-                    // If a line-by-line match is needed, we would need to get the term at `termIndex`
-                    return otherColTerms.some(otherTerm => rowValue.startsWith(otherTerm.toLowerCase()));
+                    const otherTermToMatch = otherColTerms[termIndex]?.toLowerCase();
+
+                    return otherTermToMatch ? rowValue.startsWith(otherTermToMatch) : true;
                 });
             });
 
             if (matchingRows.length > 0) {
-                matchingRows.forEach(row => foundRowsTracker.add(row));
-                results.push(...matchingRows);
-            } else {
+                matchingRows.forEach(row => {
+                    if (!foundRowsTracker.has(row)) {
+                        results.push(row);
+                        foundRowsTracker.add(row);
+                    }
+                });
+                matchFoundForTerm = true;
+            } 
+            
+            if (!matchFoundForTerm) {
                 const notFoundRow: Row = { __isNotFound: 1 };
                 data.headers.forEach(header => {
                     if (header === longestSearchListCol) {
@@ -247,10 +325,9 @@ export default function Home() {
                        const otherTerms = searchCriteria[header].split('\n');
                        notFoundRow[header] = otherTerms[termIndex] || 'data tidak ditemukan';
                     } else {
-                        notFoundRow[header] = '';
+                        notFoundRow[header] = 'data tidak ditemukan';
                     }
                 });
-
                 results.push(notFoundRow);
             }
         });
@@ -262,7 +339,8 @@ export default function Home() {
   
   const orderedDisplayColumns = useMemo(() => {
     if (!data) return [];
-    return data.headers.filter(h => displayColumns.has(h));
+    // This is now just the displayColumns array itself, since it's ordered.
+    return displayColumns;
   }, [displayColumns, data]);
 
   const handleCopyResults = useCallback(() => {
@@ -402,16 +480,66 @@ export default function Home() {
                                         <AccordionTrigger>Kolom Tampilan</AccordionTrigger>
                                         <AccordionContent className="space-y-2">
                                             <div className="flex items-center space-x-2 pb-2 border-b">
-                                                <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={displayColumns.size === data?.headers.length} />
+                                                <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={displayColumns.length === data?.headers.length} />
                                                 <Label htmlFor="display-all" className="font-semibold">Pilih Semua</Label>
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto pr-4 pt-2">
-                                                {data?.headers.map(col => (
-                                                    <div key={`display-${col}`} className="flex items-center space-x-2 mb-2">
-                                                        <Checkbox id={`display-${col}`} onCheckedChange={(checked) => handleDisplayColumnToggle(col, !!checked)} checked={displayColumns.has(col)} />
-                                                        <Label htmlFor={`display-${col}`} className="font-normal cursor-pointer flex-1">{col}</Label>
+                                            <div className="max-h-64 overflow-y-auto pr-2 pt-2 space-y-2">
+                                                {data?.headers.map((col) => {
+                                                  const isDisplayed = displayColumns.includes(col);
+                                                  const index = displayColumns.indexOf(col);
+                                                  return (
+                                                    <div key={`display-${col}`} className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-2">
+                                                          <Checkbox id={`display-${col}`} onCheckedChange={(checked) => handleDisplayColumnToggle(col, !!checked)} checked={isDisplayed} />
+                                                          <Label htmlFor={`display-${col}`} className={cn("font-normal cursor-pointer", !isDisplayed && "text-muted-foreground")}>{col}</Label>
+                                                        </div>
+                                                        {isDisplayed && (
+                                                            <div className="flex items-center gap-1">
+                                                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'up')} disabled={index === 0}>
+                                                                  <ArrowUp className="h-4 w-4" />
+                                                              </Button>
+                                                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'down')} disabled={index === displayColumns.length - 1}>
+                                                                  <ArrowDown className="h-4 w-4" />
+                                                              </Button>
+                                                            </div>
+                                                        )}
                                                     </div>
+                                                  )
+                                                })}
+                                            </div>
+                                            <Separator className="my-4" />
+                                            <div className="space-y-4">
+                                              <div>
+                                                <Label className="font-semibold text-sm">Template Tampilan</Label>
+                                                <p className="text-xs text-muted-foreground">Simpan atau muat konfigurasi kolom.</p>
+                                              </div>
+
+                                              <div className="flex gap-2">
+                                                <Input 
+                                                  placeholder="Nama template baru..." 
+                                                  value={newTemplateName}
+                                                  onChange={e => setNewTemplateName(e.target.value)}
+                                                />
+                                                <Button onClick={handleSaveTemplate}><Save className="w-4 h-4" /></Button>
+                                              </div>
+
+                                              {Object.keys(displayTemplates).length > 0 && (
+                                                <div className="space-y-2">
+                                                {Object.keys(displayTemplates).map(templateName => (
+                                                  <div key={templateName} className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                                                    <p className="text-sm font-medium">{templateName}</p>
+                                                    <div className='flex gap-1'>
+                                                      <Button size="sm" variant="outline" onClick={() => handleLoadTemplate(templateName)}>
+                                                        <CheckSquare className="w-4 h-4 mr-2" /> Muat
+                                                      </Button>
+                                                      <Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(templateName)}>
+                                                        <Trash2 className="w-4 h-4" />
+                                                      </Button>
+                                                    </div>
+                                                  </div>
                                                 ))}
+                                              </div>
+                                              )}
                                             </div>
                                         </AccordionContent>
                                     </AccordionItem>
@@ -505,7 +633,5 @@ export default function Home() {
         </div>
       </div>
     </main>
-    
-
   );
 }
