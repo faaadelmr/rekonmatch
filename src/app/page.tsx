@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { format as formatDate } from 'date-fns';
+import { id } from 'date-fns/locale';
 import {
   Accordion,
   AccordionContent,
@@ -27,9 +29,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+  DialogFooter
+} from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea";
 import { type Row } from "@/lib/mock-data";
-import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle, ArrowUp, ArrowDown, Save, Trash2, CheckSquare } from "lucide-react";
+import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle, ArrowUp, ArrowDown, Save, Trash2, CheckSquare, Link2, FileText, FileCheck2, ArrowRightLeft, Type } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -38,27 +49,106 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
-
 type AppState = 'initial' | 'loaded';
 interface ExcelData {
     headers: string[];
     rows: Row[];
 }
+type ColumnType = 'text' | 'number' | 'currency' | 'date';
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>('initial');
-  const [data, setData] = useState<ExcelData | null>(null);
+  
+  // State for File 1 (Primary)
+  const [primaryData, setPrimaryData] = useState<ExcelData | null>(null);
   const [searchColumns, setSearchColumns] = useState<Set<string>>(new Set());
   const [displayColumns, setDisplayColumns] = useState<string[]>([]);
   const [searchCriteria, setSearchCriteria] = useState<Record<string, string>>({});
   const [filteredResults, setFilteredResults] = useState<Row[] | null>(null);
+  const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
+
+  // State for File 2 (Secondary)
+  const [secondaryData, setSecondaryData] = useState<ExcelData | null>(null);
+  
+  // Linking state
+  const [primaryLinkColumn, setPrimaryLinkColumn] = useState<string>('');
+  const [secondaryLinkColumn, setSecondaryLinkColumn] = useState<string>('');
+  
+  // Secondary results state
+  const [secondaryResults, setSecondaryResults] = useState<Row[]>([]);
+  const [secondaryDisplayColumns, setSecondaryDisplayColumns] = useState<string[]>([]);
+  const [isSecondaryDialogOpen, setIsSecondaryDialogOpen] = useState(false);
+  const [currentLookupValue, setCurrentLookupValue] = useState<string | number>('');
+
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isLoadingFile, setIsLoadingFile] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLoadingFile, setIsLoadingFile] = useState<'primary' | 'secondary' | false>(false);
+  const primaryFileInputRef = useRef<HTMLInputElement>(null);
+  const secondaryFileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const [displayTemplates, setDisplayTemplates] = useState<Record<string, string[]>>({});
   const [newTemplateName, setNewTemplateName] = useState('');
+
+  const excelSerialDateToJSDate = (serial: number): Date | null => {
+    if (isNaN(serial) || serial < 0) return null;
+    // Excel's epoch starts on 1900-01-01, but it incorrectly thinks 1900 is a leap year.
+    // The convention is to treat serial numbers as days since 1899-12-30.
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const date = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
+    // Check if the resulting date is valid
+    if (isNaN(date.getTime())) return null;
+    return date;
+  };
+
+  const formatCell = (value: string | number, type: ColumnType = 'text') => {
+    if (value === null || value === undefined || value === '') return '';
+    
+    switch (type) {
+      case 'number':
+        const numValue = Number(String(value).replace(/[^0-9.-]+/g,""));
+        if (isNaN(numValue)) return String(value);
+        return numValue.toLocaleString('id-ID');
+      case 'currency':
+        const currencyValue = Number(String(value).replace(/[^0-9.-]+/g,""));
+        if (isNaN(currencyValue)) return String(value);
+        return new Intl.NumberFormat('id-ID', {
+          style: 'currency',
+          currency: 'IDR',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(currencyValue);
+      case 'date':
+        let date: Date | null = null;
+        if (typeof value === 'number') {
+          date = excelSerialDateToJSDate(value);
+        } else if (typeof value === 'string') {
+          const parsedDate = new Date(value);
+          if (!isNaN(parsedDate.getTime())) {
+            date = parsedDate;
+          } else {
+             // Try parsing number from string for serial dates that are read as strings
+             const serialFromString = Number(value);
+             if(!isNaN(serialFromString)){
+                date = excelSerialDateToJSDate(serialFromString);
+             }
+          }
+        }
+        
+        if (date) {
+          try {
+            return formatDate(date, 'd MMMM yyyy', { locale: id });
+          } catch (e) {
+            return "Format Tanggal Salah";
+          }
+        }
+        return "Format Tanggal Salah";
+      case 'text':
+      default:
+        return String(value);
+    }
+  };
+
 
   useEffect(() => {
     try {
@@ -111,12 +201,42 @@ export default function Home() {
     });
   };
 
+  const resetPrimaryDataStates = (data: ExcelData | null) => {
+    setDisplayColumns(data ? data.headers : []);
+    setSearchColumns(new Set());
+    setSearchCriteria({});
+    setFilteredResults(null);
+    setPrimaryLinkColumn('');
+    setColumnTypes({});
+  };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSwapFiles = () => {
+    if (!primaryData || !secondaryData) return;
+
+    // Swap data
+    const tempPrimary = primaryData;
+    setPrimaryData(secondaryData);
+    setSecondaryData(tempPrimary);
+
+    // Swap link columns
+    const tempPrimaryLink = primaryLinkColumn;
+    setPrimaryLinkColumn(secondaryLinkColumn);
+    setSecondaryLinkColumn(tempPrimaryLink);
+
+    // Reset states related to the primary file
+    resetPrimaryDataStates(secondaryData);
+    
+    toast({
+      title: "Data Ditukar",
+      description: "Peran data utama dan sekunder telah berhasil ditukar.",
+    });
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'secondary') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsLoadingFile(true);
+    setIsLoadingFile(fileType);
     const reader = new FileReader();
 
     reader.onload = (e) => {
@@ -125,10 +245,10 @@ export default function Home() {
         if (!fileContent) {
           throw new Error("Gagal membaca konten file.");
         }
-        const workbook = XLSX.read(fileContent, { type: 'array' });
+        const workbook = XLSX.read(fileContent, { type: 'array', cellDates: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as (string | number)[][];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false }) as (string | number)[][];
         
         if (json.length === 0) {
             throw new Error("File Excel kosong.");
@@ -145,12 +265,15 @@ export default function Home() {
 
         const processedData = { headers, rows };
         
-        setData(processedData);
-        setDisplayColumns(processedData.headers);
-        setSearchColumns(new Set());
-        setSearchCriteria({});
-        setFilteredResults(null);
-        setAppState('loaded');
+        if (fileType === 'primary') {
+          setPrimaryData(processedData);
+          resetPrimaryDataStates(processedData);
+          setAppState('loaded');
+        } else {
+          setSecondaryData(processedData);
+          setSecondaryLinkColumn('');
+        }
+        
       } catch (error) {
         console.error("Kesalahan memproses file Excel:", error);
         toast({
@@ -160,8 +283,11 @@ export default function Home() {
         });
       } finally {
         setIsLoadingFile(false);
-        if(fileInputRef.current) {
-            fileInputRef.current.value = "";
+        if(primaryFileInputRef.current && fileType === 'primary') {
+            primaryFileInputRef.current.value = "";
+        }
+        if(secondaryFileInputRef.current && fileType === 'secondary') {
+            secondaryFileInputRef.current.value = "";
         }
       }
     };
@@ -178,17 +304,20 @@ export default function Home() {
     reader.readAsArrayBuffer(file);
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleUploadClick = (fileType: 'primary' | 'secondary') => {
+    if (fileType === 'primary') {
+      primaryFileInputRef.current?.click();
+    } else {
+      secondaryFileInputRef.current?.click();
+    }
   };
 
   const handleReset = () => {
     setAppState('initial');
-    setData(null);
-    setSearchColumns(new Set());
-    setDisplayColumns([]);
-    setSearchCriteria({});
-    setFilteredResults(null);
+    setPrimaryData(null);
+    setSecondaryData(null);
+    resetPrimaryDataStates(null);
+    setSecondaryLinkColumn('');
   };
 
   const handleSearchColumnToggle = (column: string, checked: boolean) => {
@@ -211,20 +340,25 @@ export default function Home() {
   const handleDisplayColumnToggle = (column: string, checked: boolean) => {
     setDisplayColumns(prev => {
       if (checked) {
-        // Add column if it's not already there
         return prev.includes(column) ? prev : [...prev, column];
       } else {
-        // Remove column
+        // Also remove type definition when column is hidden
+        setColumnTypes(types => {
+          const newTypes = {...types};
+          delete newTypes[column];
+          return newTypes;
+        })
         return prev.filter(c => c !== column);
       }
     });
   };
   
   const handleSelectAllDisplayColumns = (checked: boolean) => {
-    if (checked && data) {
-      setDisplayColumns(data.headers);
+    if (checked && primaryData) {
+      setDisplayColumns(primaryData.headers);
     } else {
       setDisplayColumns([]);
+      setColumnTypes({});
     }
   };
   
@@ -239,8 +373,12 @@ export default function Home() {
     setDisplayColumns(newDisplayColumns);
   };
 
+  const handleColumnTypeChange = (column: string, type: ColumnType) => {
+    setColumnTypes(prev => ({...prev, [column]: type}));
+  }
+
   const handleRunQuery = useCallback(() => {
-    if (!data) return;
+    if (!primaryData) return;
     setIsProcessing(true);
     
     setTimeout(() => {
@@ -249,7 +387,7 @@ export default function Home() {
         );
 
         if (activeSearchCols.length === 0) {
-            setFilteredResults(data.rows);
+            setFilteredResults(primaryData.rows);
             setIsProcessing(false);
             return;
         }
@@ -259,7 +397,6 @@ export default function Home() {
         let maxTerms = 0;
         let mainSearchTerms: string[] = [];
 
-        // Determine the column with the most search terms to use as the primary loop
         activeSearchCols.forEach(col => {
             const terms = searchCriteria[col].split('\n').map(t => t.trim()).filter(Boolean);
             searchTermsByCol[col] = terms;
@@ -271,8 +408,7 @@ export default function Home() {
         });
         
         if (!longestSearchListCol) {
-            // Handle case where there are search criteria but they are all empty strings
-            setFilteredResults(data.rows);
+            setFilteredResults(primaryData.rows);
             setIsProcessing(false);
             return;
         }
@@ -284,7 +420,7 @@ export default function Home() {
             const termLower = term.toLowerCase();
             let matchFoundForTerm = false;
 
-            const matchingRows = data.rows.filter(row => {
+            const matchingRows = primaryData.rows.filter(row => {
                 if (foundRowsTracker.has(row)) return false;
 
                 const primaryColValue = String(row[longestSearchListCol!]).toLowerCase();
@@ -318,7 +454,7 @@ export default function Home() {
             
             if (!matchFoundForTerm) {
                 const notFoundRow: Row = { __isNotFound: 1 };
-                data.headers.forEach(header => {
+                primaryData.headers.forEach(header => {
                     if (header === longestSearchListCol) {
                         notFoundRow[header] = term;
                     } else if (searchCriteria[header]) {
@@ -335,16 +471,14 @@ export default function Home() {
         setFilteredResults(results);
         setIsProcessing(false);
     }, 500);
-  }, [data, searchCriteria, searchColumns]);
+  }, [primaryData, searchCriteria, searchColumns]);
   
   const orderedDisplayColumns = useMemo(() => {
-    if (!data) return [];
-    // This is now just the displayColumns array itself, since it's ordered.
     return displayColumns;
-  }, [displayColumns, data]);
+  }, [displayColumns]);
 
-  const handleCopyResults = useCallback(() => {
-    if (!filteredResults || orderedDisplayColumns.length === 0) {
+  const handleCopyResults = useCallback((dataToCopy: Row[], columns: string[], type: 'primary' | 'secondary') => {
+    if (!dataToCopy || columns.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Tidak Ada Data untuk Disalin',
@@ -353,7 +487,7 @@ export default function Home() {
       return;
     }
 
-    if (filteredResults.length === 0) {
+    if (dataToCopy.length === 0) {
        toast({
         title: 'Tidak Ada Data untuk Disalin',
         description: 'Tabel hasil kosong.',
@@ -361,13 +495,15 @@ export default function Home() {
       return;
     }
 
-    const header = orderedDisplayColumns.join('\t');
-    const rows = filteredResults.map(row => 
-      orderedDisplayColumns.map(col => {
-        if (row.__isNotFound) {
-            return String(row[col] ?? 'data tidak ditemukan');
+    const header = columns.join('\t');
+    const rows = dataToCopy.map(row => 
+      columns.map(col => {
+        const rawValue = row[col];
+        if (row.__isNotFound && type === 'primary') {
+            return String(rawValue ?? 'data tidak ditemukan');
         }
-        return String(row[col] ?? '');
+        // When copying, don't format. Just give raw value.
+        return String(rawValue ?? '');
       }).join('\t')
     );
     
@@ -376,7 +512,7 @@ export default function Home() {
     navigator.clipboard.writeText(clipboardText).then(() => {
       toast({
         title: 'Disalin ke Clipboard',
-        description: `${filteredResults.length} baris telah disalin.`,
+        description: `${dataToCopy.length} baris telah disalin.`,
       });
     }).catch(err => {
       console.error('Gagal menyalin teks: ', err);
@@ -386,7 +522,45 @@ export default function Home() {
         description: 'Tidak dapat menyalin data ke clipboard. Lihat konsol untuk detail.',
       });
     });
-  }, [filteredResults, orderedDisplayColumns, toast]);
+  }, [toast]);
+
+  const handleRowClick = (row: Row) => {
+    if (row.__isNotFound || !primaryLinkColumn || !secondaryLinkColumn || !secondaryData) {
+      return;
+    }
+    const lookupValue = row[primaryLinkColumn];
+    if (lookupValue === undefined) return;
+    
+    setCurrentLookupValue(lookupValue);
+
+    const relatedRows = secondaryData.rows.filter(secondaryRow => 
+      String(secondaryRow[secondaryLinkColumn]) === String(lookupValue)
+    );
+
+    setSecondaryResults(relatedRows);
+    setSecondaryDisplayColumns(secondaryData.headers);
+    setIsSecondaryDialogOpen(true);
+  };
+  
+  const handleSecondaryDisplayColumnToggle = (column: string, checked: boolean) => {
+    setSecondaryDisplayColumns(prev => {
+      if (checked) {
+        return prev.includes(column) ? prev : [...prev, column];
+      } else {
+        return prev.filter(c => c !== column);
+      }
+    });
+  };
+
+  const handleSelectAllSecondaryDisplayColumns = (checked: boolean) => {
+    if (checked && secondaryData) {
+      setSecondaryDisplayColumns(secondaryData.headers);
+    } else {
+      setSecondaryDisplayColumns([]);
+    }
+  };
+
+  const isLinkingEnabled = primaryData && secondaryData;
 
 
   if (appState === 'initial') {
@@ -414,14 +588,14 @@ export default function Home() {
                 </AlertDescription>
             </Alert>
 
-            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".xlsx, .xls, .csv" />
-            <Button size="lg" className="w-full text-lg py-7" onClick={handleUploadClick} disabled={isLoadingFile}>
-              {isLoadingFile ? (
+            <input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" />
+            <Button size="lg" className="w-full text-lg py-7" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>
+              {isLoadingFile === 'primary' ? (
                 <Loader2 className="mr-2 h-6 w-6 animate-spin" />
               ) : (
                 <Upload className="mr-2 h-6 w-6" />
               )}
-              Pilih File Excel
+              Pilih File Excel Utama
             </Button>
           </CardContent>
           <CardFooter>
@@ -450,12 +624,104 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* File Uploads and Linking Section */}
+        <div className="lg:col-span-3">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-2xl">Susunan Kueri</CardTitle>
-                    <CardDescription>Pilih kolom, masukkan kriteria, dan jalankan kueri Anda.</CardDescription>
+                    <CardTitle className="text-2xl">1. Sumber Data</CardTitle>
+                    <CardDescription>Unggah file, tukar peran jika perlu, dan hubungkan data Anda.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-6">
+                    <Card className="h-full">
+                        <CardHeader className="flex flex-row items-start justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Utama</CardTitle>
+                                <CardDescription>File yang akan difilter.</CardDescription>
+                            </div>
+                            {primaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}
+                        </CardHeader>
+                        <CardContent>
+                            <input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" />
+                            <Button className="w-full" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>
+                                {isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                                {primaryData ? 'Ganti File Utama' : 'Pilih File Utama'}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                    
+                    <div className="flex justify-center">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={handleSwapFiles}
+                            disabled={!isLinkingEnabled}
+                            aria-label="Tukar file utama dan sekunder"
+                            className="h-12 w-12 rounded-full"
+                        >
+                            <ArrowRightLeft className="w-5 h-5" />
+                        </Button>
+                    </div>
+
+                    <Card className="h-full">
+                        <CardHeader className="flex flex-row items-start justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Sekunder</CardTitle>
+                                <CardDescription>File untuk data terkait.</CardDescription>
+                            </div>
+                            {secondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}
+                        </CardHeader>
+                        <CardContent>
+                            <input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" />
+                            <Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!!isLoadingFile}>
+                                {isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                                {secondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </CardContent>
+                {isLinkingEnabled && (
+                  <>
+                    <Separator />
+                    <CardHeader>
+                      <CardTitle className="text-xl flex items-center gap-2"><Link2 className="w-5 h-5" />Hubungkan Data</CardTitle>
+                      <CardDescription>Pilih kolom kunci dari setiap file untuk menghubungkan data.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div>
+                            <Label htmlFor="primary-link-col">Kolom Kunci Data Utama</Label>
+                            <Select value={primaryLinkColumn} onValueChange={setPrimaryLinkColumn}>
+                                <SelectTrigger id="primary-link-col">
+                                    <SelectValue placeholder="Pilih kolom..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {primaryData?.headers.map(h => <SelectItem key={`p-link-${h}`} value={h}>{h}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                       </div>
+                       <div>
+                            <Label htmlFor="secondary-link-col">Kolom Kunci Data Sekunder</Label>
+                            <Select value={secondaryLinkColumn} onValueChange={setSecondaryLinkColumn}>
+                                <SelectTrigger id="secondary-link-col">
+                                    <SelectValue placeholder="Pilih kolom..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {secondaryData?.headers.map(h => <SelectItem key={`s-link-${h}`} value={h}>{h}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                       </div>
+                    </CardContent>
+                  </>
+                )}
+            </Card>
+        </div>
+
+
+        <div className="lg:col-span-3">
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-2xl">2. Susunan Kueri</CardTitle>
+                    <CardDescription>Pilih kolom, masukkan kriteria, dan jalankan kueri pada Data Utama.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -468,7 +734,7 @@ export default function Home() {
                                     <AccordionItem value="search-cols">
                                         <AccordionTrigger>Kolom Pencarian</AccordionTrigger>
                                         <AccordionContent className="space-y-2 max-h-48 overflow-y-auto pr-4">
-                                            {data?.headers.map(col => (
+                                            {primaryData?.headers.map(col => (
                                                 <div key={`search-${col}`} className="flex items-center space-x-2">
                                                     <Checkbox id={`search-${col}`} onCheckedChange={(checked) => handleSearchColumnToggle(col, !!checked)} checked={searchColumns.has(col)} />
                                                     <Label htmlFor={`search-${col}`} className="font-normal cursor-pointer flex-1">{col}</Label>
@@ -480,28 +746,49 @@ export default function Home() {
                                         <AccordionTrigger>Kolom Tampilan</AccordionTrigger>
                                         <AccordionContent className="space-y-2">
                                             <div className="flex items-center space-x-2 pb-2 border-b">
-                                                <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={displayColumns.length === data?.headers.length} />
+                                                <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={displayColumns.length === primaryData?.headers.length} />
                                                 <Label htmlFor="display-all" className="font-semibold">Pilih Semua</Label>
                                             </div>
-                                            <div className="max-h-64 overflow-y-auto pr-2 pt-2 space-y-2">
-                                                {data?.headers.map((col) => {
+                                            <div className="max-h-96 overflow-y-auto pr-2 pt-2 space-y-1">
+                                                {primaryData?.headers.map((col) => {
                                                   const isDisplayed = displayColumns.includes(col);
                                                   const index = displayColumns.indexOf(col);
                                                   return (
-                                                    <div key={`display-${col}`} className="flex items-center justify-between">
-                                                        <div className="flex items-center space-x-2">
-                                                          <Checkbox id={`display-${col}`} onCheckedChange={(checked) => handleDisplayColumnToggle(col, !!checked)} checked={isDisplayed} />
-                                                          <Label htmlFor={`display-${col}`} className={cn("font-normal cursor-pointer", !isDisplayed && "text-muted-foreground")}>{col}</Label>
-                                                        </div>
-                                                        {isDisplayed && (
-                                                            <div className="flex items-center gap-1">
-                                                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'up')} disabled={index === 0}>
-                                                                  <ArrowUp className="h-4 w-4" />
-                                                              </Button>
-                                                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'down')} disabled={index === displayColumns.length - 1}>
-                                                                  <ArrowDown className="h-4 w-4" />
-                                                              </Button>
+                                                    <div key={`display-${col}`} className={cn("p-2 rounded-md", isDisplayed && "bg-muted/50")}>
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center space-x-2">
+                                                              <Checkbox id={`display-${col}`} onCheckedChange={(checked) => handleDisplayColumnToggle(col, !!checked)} checked={isDisplayed} />
+                                                              <Label htmlFor={`display-${col}`} className={cn("font-normal cursor-pointer", !isDisplayed && "text-muted-foreground")}>{col}</Label>
                                                             </div>
+                                                            {isDisplayed && (
+                                                                <div className="flex items-center gap-1">
+                                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'up')} disabled={index === 0}>
+                                                                      <ArrowUp className="h-4 w-4" />
+                                                                  </Button>
+                                                                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'down')} disabled={index === displayColumns.length - 1}>
+                                                                      <ArrowDown className="h-4 w-4" />
+                                                                  </Button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                         {isDisplayed && (
+                                                          <div className="flex items-center gap-2 mt-2 pl-6">
+                                                              <Type className="h-4 w-4 text-muted-foreground"/>
+                                                              <Select
+                                                                value={columnTypes[col] || 'text'}
+                                                                onValueChange={(value) => handleColumnTypeChange(col, value as ColumnType)}
+                                                              >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                  <SelectValue placeholder="Tipe Data" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                  <SelectItem value="text">Teks</SelectItem>
+                                                                  <SelectItem value="number">Angka</SelectItem>
+                                                                  <SelectItem value="currency">Mata Uang (Rp)</SelectItem>
+                                                                  <SelectItem value="date">Tanggal</SelectItem>
+                                                                </SelectContent>
+                                                              </Select>
+                                                          </div>
                                                         )}
                                                     </div>
                                                   )
@@ -585,16 +872,17 @@ export default function Home() {
         </div>
 
 
-        <div className="xl:col-span-3">
+        <div className="lg:col-span-3">
             <Card className="shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between">
                     <div>
-                        <CardTitle className="text-2xl flex items-center gap-2"><Columns className="w-6 h-6" /> Hasil</CardTitle>
+                        <CardTitle className="text-2xl flex items-center gap-2"><Columns className="w-6 h-6" /> Hasil Kueri Utama</CardTitle>
                         <CardDescription>
                             {filteredResults ? `${filteredResults.length} data yang cocok ditemukan.` : 'Hasil kueri Anda akan muncul di sini.'}
+                            {isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && ' Klik baris untuk melihat data terkait.'}
                         </CardDescription>
                     </div>
-                    <Button variant="outline" onClick={handleCopyResults} disabled={!filteredResults || filteredResults.length === 0}>
+                    <Button variant="outline" onClick={() => handleCopyResults(filteredResults || [], orderedDisplayColumns, 'primary')} disabled={!filteredResults || filteredResults.length === 0}>
                         <Copy className="w-4 h-4 mr-2" />
                         Salin Hasil
                     </Button>
@@ -612,9 +900,16 @@ export default function Home() {
                             <TableBody>
                                 {filteredResults && filteredResults.length > 0 ? (
                                     filteredResults.map((row, index) => (
-                                        <TableRow key={index} className={cn(row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30")}>
+                                        <TableRow 
+                                            key={index} 
+                                            className={cn(
+                                                row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30",
+                                                !row.__isNotFound && isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && "cursor-pointer"
+                                            )}
+                                            onClick={() => handleRowClick(row)}
+                                        >
                                             {orderedDisplayColumns.map(col => (
-                                                <TableCell key={`${index}-${col}`}>{String(row[col] ?? '')}</TableCell>
+                                                <TableCell key={`${index}-${col}`}>{formatCell(row[col], columnTypes[col])}</TableCell>
                                             ))}
                                         </TableRow>
                                     ))
@@ -632,6 +927,84 @@ export default function Home() {
             </Card>
         </div>
       </div>
+      <Dialog open={isSecondaryDialogOpen} onOpenChange={setIsSecondaryDialogOpen}>
+        <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Hasil Data Sekunder</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Menampilkan data terkait untuk nilai kunci: <code className="bg-muted px-2 py-1 rounded-md font-semibold">{String(currentLookupValue)}</code>
+            </p>
+          </DialogHeader>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 flex-1 min-h-0">
+            <div className="md:col-span-1 border-r pr-4 flex flex-col gap-4">
+              <h4 className="font-semibold text-lg">Tampilkan Kolom</h4>
+               <div className="flex items-center space-x-2 pb-2 border-b">
+                <Checkbox
+                  id="secondary-display-all"
+                  onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)}
+                  checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false}
+                />
+                <Label htmlFor="secondary-display-all" className="font-semibold">Pilih Semua</Label>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                {secondaryData?.headers.map(col => (
+                  <div key={`secondary-display-${col}`} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`secondary-display-${col}`}
+                      onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)}
+                      checked={secondaryDisplayColumns.includes(col)}
+                    />
+                    <Label htmlFor={`secondary-display-${col}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="md:col-span-3 flex-1 min-h-0">
+               <div className="overflow-auto border rounded-lg h-full">
+                <Table>
+                    <TableHeader className="sticky top-0 bg-background z-10">
+                        <TableRow>
+                            {secondaryDisplayColumns.map(col => (
+                                <TableHead key={`s-header-${col}`} className="font-bold bg-muted/50">{col}</TableHead>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {secondaryResults.length > 0 ? (
+                        secondaryResults.map((row, index) => (
+                          <TableRow key={`s-row-${index}`}>
+                            {secondaryDisplayColumns.map(col => (
+                              <TableCell key={`s-cell-${index}-${col}`}>{String(row[col] ?? '')}</TableCell>
+                            ))}
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={secondaryDisplayColumns.length || 1} className="h-24 text-center">
+                            Tidak ada data terkait yang ditemukan.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="pt-4">
+             <Button 
+                variant="outline" 
+                onClick={() => handleCopyResults(secondaryResults, secondaryDisplayColumns, 'secondary')}
+                disabled={secondaryResults.length === 0}
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Salin Hasil Sekunder
+             </Button>
+             <DialogClose asChild>
+                <Button type="button" variant="secondary">Tutup</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
