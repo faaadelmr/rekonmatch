@@ -331,46 +331,49 @@ export const useExcelMatcher = () => {
       const longestInputLength = Math.max(0, ...parsedCriteria.map(c => c.terms.length));
       
       const finalResults: Row[] = [];
-      const availableData = [...primaryData.rows];
-      const lastUsedTerms: Record<string, string> = {};
+      const usedDataIndicesCount = new Map<number, number>();
 
       for (let i = 0; i < longestInputLength; i++) {
         const termRow: Record<string, string> = {};
         let hasValueThisRow = false;
 
         parsedCriteria.forEach(({ col, terms }) => {
-          if (terms[i] !== undefined) {
-            termRow[col] = terms[i];
-            lastUsedTerms[col] = terms[i];
-            hasValueThisRow = true;
-          } else if(lastUsedTerms[col] !== undefined){
-             termRow[col] = lastUsedTerms[col];
-          }
+            const term = terms[i] ?? terms[terms.length - 1];
+            if (term !== undefined) {
+              termRow[col] = term;
+              if (terms[i] !== undefined) {
+                hasValueThisRow = true;
+              }
+            }
         });
 
-        if (!hasValueThisRow) continue;
-
-        let foundMatchIndex = -1;
+        if (!hasValueThisRow && i >= Math.max(...parsedCriteria.map(c => c.terms.length))) continue;
         
-        for (let j = 0; j < availableData.length; j++) {
-          const dataRow = availableData[j];
-          if (!dataRow) continue;
-          
-          const isMatchForAllColumns = Object.entries(termRow).every(([col, term]) => {
-            const cellValue = String(dataRow[col] ?? '');
-            const { operator } = searchCriteria[col];
-            return checkMatch(cellValue, operator, term);
-          });
-          
-          if (isMatchForAllColumns) {
-            foundMatchIndex = j;
-            break; 
-          }
-        }
+        const availableData = primaryData.rows.map((row, index) => ({ row, originalIndex: index }));
 
-        if (foundMatchIndex !== -1) {
-          finalResults.push(availableData[foundMatchIndex]);
-          availableData.splice(foundMatchIndex, 1); 
+        const foundMatches = availableData.filter(({ row }) => {
+            if (!row) return false;
+            return Object.entries(termRow).every(([col, term]) => {
+                const cellValue = String(row[col] ?? '');
+                const { operator } = searchCriteria[col];
+                return checkMatch(cellValue, operator, term);
+            });
+        });
+
+        if (foundMatches.length > 0) {
+          foundMatches.forEach(({ row, originalIndex }) => {
+            const currentCount = usedDataIndicesCount.get(originalIndex) || 0;
+            if (currentCount > 0) {
+                const duplicateRow: Row = { __isNotFound: true };
+                Object.keys(termRow).forEach(col => {
+                    duplicateRow[col] = `Data duplikasi, ${currentCount} Data sudah ada`;
+                });
+                finalResults.push(duplicateRow);
+            } else {
+                finalResults.push(row);
+            }
+            usedDataIndicesCount.set(originalIndex, currentCount + 1);
+          });
         } else {
           const notFoundRow: Row = { __isNotFound: true };
           Object.entries(termRow).forEach(([col, term]) => {
@@ -490,7 +493,7 @@ export const useExcelMatcher = () => {
     handleSearchColumnToggle,
     handleSelectAllDisplayColumns,
     handleDisplayColumnToggle,
-moveDisplayColumn,
+    moveDisplayColumn,
     handleColumnTypeChange,
     handleColumnColorChange,
     handleSaveTemplate,
@@ -506,5 +509,8 @@ moveDisplayColumn,
     handleSelectAllSecondaryDisplayColumns
   };
 };
+
+    
+    
 
     
