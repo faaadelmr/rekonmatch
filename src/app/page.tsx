@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import { format as formatDate } from 'date-fns';
 import { id } from 'date-fns/locale';
 import {
@@ -30,17 +29,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-  SheetClose,
-  SheetFooter
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { type Row } from "@/lib/mock-data";
-import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle, ArrowUp, ArrowDown, Save, Trash2, CheckSquare, Link2, FileText, FileCheck2, ArrowRightLeft, Type, Palette, Filter, Settings, PanelLeft } from "lucide-react";
+import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle, ArrowUp, ArrowDown, Save, Trash2, CheckSquare, Link2, FileText, FileCheck2, ArrowRightLeft, Type, Palette, Filter, Settings } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -67,6 +65,7 @@ export default function Home() {
   
   // State for File 1 (Primary)
   const [primaryData, setPrimaryData] = useState<ExcelData | null>(null);
+  const [primaryFileName, setPrimaryFileName] = useState<string>('');
   const [searchColumns, setSearchColumns] = useState<Set<string>>(new Set());
   const [displayColumns, setDisplayColumns] = useState<string[]>([]);
   const [searchCriteria, setSearchCriteria] = useState<Record<string, SearchCriterion>>({});
@@ -79,6 +78,7 @@ export default function Home() {
 
   // State for File 2 (Secondary)
   const [secondaryData, setSecondaryData] = useState<ExcelData | null>(null);
+  const [secondaryFileName, setSecondaryFileName] = useState<string>('');
   
   // Linking state
   const [primaryLinkColumn, setPrimaryLinkColumn] = useState<string>('');
@@ -230,25 +230,30 @@ export default function Home() {
 
   const handleSwapFiles = () => {
     if (!primaryData || !secondaryData) return;
-    const tempPrimary = primaryData;
+    const tempPrimary = { data: primaryData, name: primaryFileName };
     setPrimaryData(secondaryData);
-    setSecondaryData(tempPrimary);
+    setPrimaryFileName(secondaryFileName);
+    setSecondaryData(tempPrimary.data);
+    setSecondaryFileName(tempPrimary.name);
+
     const tempPrimaryLink = primaryLinkColumn;
     setPrimaryLinkColumn(secondaryLinkColumn);
     setSecondaryLinkColumn(tempPrimaryLink);
+
     resetPrimaryDataStates(secondaryData);
     toast({ title: "Data Ditukar", description: "Peran data utama dan sekunder telah berhasil ditukar." });
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'secondary') => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'secondary') => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setIsLoadingFile(fileType);
     const reader = new FileReader();
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await import('xlsx');
         const fileContent = e.target?.result;
         if (!fileContent) throw new Error("Gagal membaca konten file.");
         
@@ -272,10 +277,12 @@ export default function Home() {
         
         if (fileType === 'primary') {
           setPrimaryData(processedData);
+          setPrimaryFileName(file.name);
           resetPrimaryDataStates(processedData);
           setAppState('loaded');
         } else {
           setSecondaryData(processedData);
+          setSecondaryFileName(file.name);
           setSecondaryLinkColumn('');
         }
         
@@ -304,7 +311,9 @@ export default function Home() {
   const handleReset = () => {
     setAppState('initial');
     setPrimaryData(null);
+    setPrimaryFileName('');
     setSecondaryData(null);
+    setSecondaryFileName('');
     resetPrimaryDataStates(null);
     setSecondaryLinkColumn('');
   };
@@ -367,31 +376,31 @@ export default function Home() {
   const handleRunQuery = useCallback(() => {
     if (!primaryData) return;
     setIsProcessing(true);
-
+  
     setTimeout(() => {
       const activeSearchCriteria = Object.entries(searchCriteria)
         .filter(([_, criterion]) => criterion && criterion.value.trim() !== '');
-
+  
       if (activeSearchCriteria.length === 0) {
         setFilteredResults(primaryData.rows);
         setIsProcessing(false);
         return;
       }
-
+  
       const finalResults: Row[] = [];
       const allSearchTerms: { term: string, operator: SearchOperator, originalColumn: string }[] = [];
-
+  
       activeSearchCriteria.forEach(([col, crit]) => {
         const terms = crit.value.split(/,|\n/).map(s => s.trim()).filter(s => s);
         terms.forEach(term => {
           allSearchTerms.push({ term, operator: crit.operator, originalColumn: col });
         });
       });
-
+  
       allSearchTerms.forEach(({ term, operator, originalColumn }) => {
         const searchTermLower = term.toLowerCase();
         let termFound = false;
-
+  
         primaryData.rows.forEach(row => {
           const searchColsToCheck = Array.from(searchColumns);
           const isMatch = searchColsToCheck.some(col => {
@@ -404,23 +413,27 @@ export default function Home() {
               default: return false;
             }
           });
-
+  
           if (isMatch) {
             finalResults.push(row);
             termFound = true;
           }
         });
-
+  
         if (!termFound) {
-          const notFoundRow: Row = { __isNotFound: true, [originalColumn]: term };
+          const notFoundRow: Row = { __isNotFound: true };
+          Array.from(searchColumns).forEach(sc => {
+            notFoundRow[sc] = term;
+          });
           finalResults.push(notFoundRow);
         }
       });
-
+  
       setFilteredResults(finalResults);
       setIsProcessing(false);
     }, 500);
   }, [primaryData, searchCriteria, searchColumns]);
+  
   
   const handleCopyResults = useCallback((dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => {
     if (!dataToCopy || columns.length === 0 || dataToCopy.length === 0) {
@@ -523,10 +536,10 @@ export default function Home() {
         <div className="lg:col-span-3">
             <Card>
                 <CardHeader><CardTitle className="text-2xl">1. Sumber Data</CardTitle><CardDescription>Unggah file, tukar peran jika perlu, dan hubungkan data Anda.</CardDescription></CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-6">
-                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Utama</CardTitle><CardDescription>File yang akan difilter.</CardDescription></div>{primaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>{isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}{primaryData ? 'Ganti File Utama' : 'Pilih File Utama'}</Button></CardContent></Card>
-                    <div className="flex justify-center"><Button variant="outline" size="icon" onClick={handleSwapFiles} disabled={!isLinkingEnabled} aria-label="Tukar file utama dan sekunder" className="h-12 w-12 rounded-full"><ArrowRightLeft className="w-5 h-5" /></Button></div>
-                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Sekunder</CardTitle><CardDescription>File untuk data terkait.</CardDescription></div>{secondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!!isLoadingFile}>{isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}{secondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}</Button></CardContent></Card>
+                <CardContent className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-start gap-6">
+                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Utama</CardTitle><CardDescription className="text-xs text-muted-foreground truncate" title={primaryFileName}>{primaryFileName || 'File yang akan difilter.'}</CardDescription></div>{primaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>{isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}{primaryData ? 'Ganti File Utama' : 'Pilih File Utama'}</Button></CardContent></Card>
+                    <div className="flex justify-center mt-8"><Button variant="outline" size="icon" onClick={handleSwapFiles} disabled={!isLinkingEnabled} aria-label="Tukar file utama dan sekunder" className="h-12 w-12 rounded-full"><ArrowRightLeft className="w-5 h-5" /></Button></div>
+                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Sekunder</CardTitle><CardDescription className="text-xs text-muted-foreground truncate" title={secondaryFileName}>{secondaryFileName || 'File untuk data terkait.'}</CardDescription></div>{secondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!primaryData || !!isLoadingFile}>{isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}{secondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}</Button></CardContent></Card>
                 </CardContent>
                 {isLinkingEnabled && (<><Separator /><CardHeader><CardTitle className="text-xl flex items-center gap-2"><Link2 className="w-5 h-5" />Hubungkan Data</CardTitle><CardDescription>Pilih kolom kunci dari setiap file untuk menghubungkan data.</CardDescription></CardHeader><CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><Label htmlFor="primary-link-col">Kolom Kunci Data Utama</Label><Select value={primaryLinkColumn} onValueChange={setPrimaryLinkColumn}><SelectTrigger id="primary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger><SelectContent>{primaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`p-link-${h}-${i}`} value={h}>{h}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="secondary-link-col">Kolom Kunci Data Sekunder</Label><Select value={secondaryLinkColumn} onValueChange={setSecondaryLinkColumn}><SelectTrigger id="secondary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger><SelectContent>{secondaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`s-link-${h}-${i}`} value={h}>{h}</SelectItem>)}</SelectContent></Select></div></CardContent></>)}
             </Card>
@@ -542,7 +555,7 @@ export default function Home() {
                   {Object.keys(primaryDisplayTemplates).length > 0 && (<div className="space-y-2">{Object.keys(primaryDisplayTemplates).map(name => (<div key={name} className="flex items-center justify-between gap-2 p-2 border rounded-md"><p className="text-sm font-medium">{name}</p><div className='flex gap-1'><Button size="sm" variant="outline" onClick={() => handleLoadTemplate(name, 'primary')}><CheckSquare className="w-4 h-4 mr-2" /> Muat</Button><Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(name, 'primary')}><Trash2 className="w-4 h-4" /></Button></div></div>))}</div>)}
                 </div>
                 </AccordionContent></AccordionItem></Accordion></CardContent></Card>
-                <Card className="flex flex-col"><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5"/>Kriteria Pencarian</CardTitle></CardHeader><CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">{Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map(col => (<div key={`criteria-${col}`} className="space-y-2"><Label htmlFor={`textarea-${col}`} className="font-semibold">{col}</Label><div className="flex flex-col gap-2"><Select value={searchCriteria[col]?.operator || 'contains'} onValueChange={(op) => handleSearchOperatorChange(col, op as SearchOperator)}><SelectTrigger className="w-full h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Mengandung</SelectItem><SelectItem value="equals">Sama Dengan</SelectItem><SelectItem value="startsWith">Dimulai Dengan</SelectItem><SelectItem value="endsWith">Diakhiri Dengan</SelectItem></SelectContent></Select><Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value)} className="min-h-[100px]" /></div></div>)) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}</CardContent></Card>
+                <Card className="flex flex-col"><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5"/>Kriteria Pencarian</CardTitle></CardHeader><CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">{Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map((col, index) => (<div key={`criteria-${col}-${index}`} className="space-y-2"><Label htmlFor={`textarea-${col}`} className="font-semibold">{col}</Label><div className="flex flex-col gap-2"><Select value={searchCriteria[col]?.operator || 'contains'} onValueChange={(op) => handleSearchOperatorChange(col, op as SearchOperator)}><SelectTrigger className="w-full h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Mengandung</SelectItem><SelectItem value="equals">Sama Dengan</SelectItem><SelectItem value="startsWith">Dimulai Dengan</SelectItem><SelectItem value="endsWith">Diakhiri Dengan</SelectItem></SelectContent></Select><Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value)} className="min-h-[100px]" /></div></div>)) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}</CardContent></Card>
                 <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center"><CardContent className="pt-6 text-center"><Button size="lg" className="w-full h-16 text-xl" onClick={handleRunQuery} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Filter className="mr-2 h-6 w-6" />}Jalankan Filter</Button></CardContent></Card>
             </div></CardContent></Card>
         </div>
@@ -565,53 +578,127 @@ export default function Home() {
         </div>
       </div>
 
-      <Sheet open={isSecondarySheetOpen} onOpenChange={setIsSecondarySheetOpen}>
-        <SheetContent side="right" className="sm:max-w-4xl w-full p-0 flex flex-col">
-          <SheetHeader className="p-6 pb-0"><SheetTitle className="text-2xl">Hasil Data Sekunder</SheetTitle><p className="text-sm text-muted-foreground">Menampilkan data terkait untuk: <code className="bg-muted px-2 py-1 rounded-md font-semibold">{String(currentLookupValue)}</code></p></SheetHeader>
-          <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6 flex-1 min-h-0 p-6">
-            <aside className="hidden md:flex flex-col gap-4 border-r pr-6">
+      <Dialog open={isSecondarySheetOpen} onOpenChange={setIsSecondarySheetOpen}>
+        <DialogContent className="w-[95vw] h-[95vh] max-w-full max-h-full flex flex-col p-0">
+          <DialogHeader className="p-6 pb-4 border-b">
+            <DialogTitle className="text-2xl">Hasil Data Sekunder</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Menampilkan data terkait untuk: <code className="bg-muted px-2 py-1 rounded-md font-semibold">{String(currentLookupValue)}</code>
+            </p>
+          </DialogHeader>
+          
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6 min-h-0 overflow-hidden p-6">
+            <aside className="hidden md:flex flex-col gap-4 border-r pr-6 overflow-y-auto">
               <h3 className="font-semibold text-lg flex items-center gap-2"><Settings className="w-5 h-5"/>Opsi Tampilan</h3>
               <Separator />
-              <div className="flex items-center space-x-2"><Checkbox id="secondary-display-all" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false} /><Label htmlFor="secondary-display-all" className="font-semibold">Pilih Semua</Label></div>
-              <div className="flex-1 overflow-y-auto space-y-2 pr-2">{secondaryData?.headers.map((col, index) => (<div key={`secondary-display-${col}-${index}`} className="flex items-center space-x-2"><Checkbox id={`secondary-display-${col}-${index}`} onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)} checked={secondaryDisplayColumns.includes(col)} /><Label htmlFor={`secondary-display-${col}-${index}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label></div>))}</div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="secondary-display-all" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false} />
+                <Label htmlFor="secondary-display-all" className="font-semibold">Pilih Semua</Label>
+              </div>
+              <div className="flex-1 space-y-2 pr-2">
+                {secondaryData?.headers.map((col, index) => (
+                  <div key={`secondary-display-${col}-${index}`} className="flex items-center space-x-2">
+                    <Checkbox id={`secondary-display-${col}-${index}`} onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)} checked={secondaryDisplayColumns.includes(col)} />
+                    <Label htmlFor={`secondary-display-${col}-${index}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label>
+                  </div>
+                ))}
+              </div>
               <Separator />
                <div className="space-y-4">
                   <div><Label className="font-semibold text-sm">Template Tampilan Sekunder</Label></div>
-                  <div className="flex gap-2"><Input placeholder="Nama template baru..." value={newSecondaryTemplateName} onChange={e => setNewSecondaryTemplateName(e.target.value)} /><Button onClick={() => handleSaveTemplate('secondary')}><Save className="w-4 h-4" /></Button></div>
-                  {Object.keys(secondaryDisplayTemplates).length > 0 && (<div className="space-y-2">{Object.keys(secondaryDisplayTemplates).map(name => (<div key={name} className="flex items-center justify-between gap-2 p-2 border rounded-md"><p className="text-sm font-medium">{name}</p><div className='flex gap-1'><Button size="sm" variant="outline" onClick={() => handleLoadTemplate(name, 'secondary')}><CheckSquare className="w-4 h-4 mr-2" /> Muat</Button><Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(name, 'secondary')}><Trash2 className="w-4 h-4" /></Button></div></div>))}</div>)}
+                  <div className="flex gap-2">
+                    <Input placeholder="Nama template baru..." value={newSecondaryTemplateName} onChange={e => setNewSecondaryTemplateName(e.target.value)} />
+                    <Button onClick={() => handleSaveTemplate('secondary')}><Save className="w-4 h-4" /></Button>
+                  </div>
+                  {Object.keys(secondaryDisplayTemplates).length > 0 && (
+                    <div className="space-y-2">
+                      {Object.keys(secondaryDisplayTemplates).map(name => (
+                        <div key={name} className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                          <p className="text-sm font-medium">{name}</p>
+                          <div className='flex gap-1'>
+                            <Button size="sm" variant="outline" onClick={() => handleLoadTemplate(name, 'secondary')}><CheckSquare className="w-4 h-4 mr-2" /> Muat</Button>
+                            <Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(name, 'secondary')}><Trash2 className="w-4 h-4" /></Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
             </aside>
-            <main className="flex-1 min-h-0 flex flex-col gap-4">
+            
+            <main className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
               <div className="md:hidden">
                 <Accordion type="single" collapsible>
                   <AccordionItem value="settings">
                     <AccordionTrigger><Settings className="mr-2" /> Tampilkan Opsi Tampilan</AccordionTrigger>
                     <AccordionContent className="flex flex-col gap-4 pt-4">
-                        <div className="flex items-center space-x-2"><Checkbox id="secondary-display-all-mobile" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false} /><Label htmlFor="secondary-display-all-mobile" className="font-semibold">Pilih Semua</Label></div>
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 max-h-48">{secondaryData?.headers.map((col, index) => (<div key={`secondary-display-${col}-mobile-${index}`} className="flex items-center space-x-2"><Checkbox id={`secondary-display-${col}-mobile-${index}`} onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)} checked={secondaryDisplayColumns.includes(col)} /><Label htmlFor={`secondary-display-${col}-mobile-${index}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label></div>))}</div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox id="secondary-display-all-mobile" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false} />
+                          <Label htmlFor="secondary-display-all-mobile" className="font-semibold">Pilih Semua</Label>
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-2 max-h-48">
+                          {secondaryData?.headers.map((col, index) => (
+                            <div key={`secondary-display-${col}-mobile-${index}`} className="flex items-center space-x-2">
+                              <Checkbox id={`secondary-display-${col}-mobile-${index}`} onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)} checked={secondaryDisplayColumns.includes(col)} />
+                              <Label htmlFor={`secondary-display-${col}-mobile-${index}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label>
+                            </div>
+                          ))}
+                        </div>
                          <Separator />
                          <div className="space-y-4">
                           <div><Label className="font-semibold text-sm">Template Tampilan Sekunder</Label></div>
-                          <div className="flex gap-2"><Input placeholder="Nama template baru..." value={newSecondaryTemplateName} onChange={e => setNewSecondaryTemplateName(e.target.value)} /><Button onClick={() => handleSaveTemplate('secondary')}><Save className="w-4 h-4" /></Button></div>
-                          {Object.keys(secondaryDisplayTemplates).length > 0 && (<div className="space-y-2">{Object.keys(secondaryDisplayTemplates).map(name => (<div key={name} className="flex items-center justify-between gap-2 p-2 border rounded-md"><p className="text-sm font-medium">{name}</p><div className='flex gap-1'><Button size="sm" variant="outline" onClick={() => handleLoadTemplate(name, 'secondary')}><CheckSquare className="w-4 h-4 mr-2" /> Muat</Button><Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(name, 'secondary')}><Trash2 className="w-4 h-4" /></Button></div></div>))}</div>)}
+                          <div className="flex gap-2">
+                            <Input placeholder="Nama template baru..." value={newSecondaryTemplateName} onChange={e => setNewSecondaryTemplateName(e.target.value)} />
+                            <Button onClick={() => handleSaveTemplate('secondary')}><Save className="w-4 h-4" /></Button>
+                          </div>
+                          {Object.keys(secondaryDisplayTemplates).length > 0 && (
+                            <div className="space-y-2">
+                              {Object.keys(secondaryDisplayTemplates).map(name => (
+                                <div key={name} className="flex items-center justify-between gap-2 p-2 border rounded-md">
+                                  <p className="text-sm font-medium">{name}</p>
+                                  <div className='flex gap-1'>
+                                    <Button size="sm" variant="outline" onClick={() => handleLoadTemplate(name, 'secondary')}><CheckSquare className="w-4 h-4 mr-2" /> Muat</Button>
+                                    <Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(name, 'secondary')}><Trash2 className="w-4 h-4" /></Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
               </div>
+
               <div className="overflow-auto border rounded-lg flex-1">
-                <Table><TableHeader className="sticky top-0 bg-background z-10"><TableRow>{secondaryDisplayColumns.map((col, index) => (<TableHead key={`s-header-${col}-${index}`} className="font-bold bg-muted/50">{col}</TableHead>))}</TableRow></TableHeader>
-                  <TableBody>{secondaryResults.length > 0 ? (secondaryResults.map((row, index) => (<TableRow key={`s-row-${index}`}>{secondaryDisplayColumns.map((col, colIndex) => (<TableCell key={`s-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col])}</TableCell>))}</TableRow>))) : (<TableRow><TableCell colSpan={secondaryDisplayColumns.length || 1} className="h-24 text-center">Tidak ada data terkait yang ditemukan.</TableCell></TableRow>)}</TableBody>
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10">
+                    <TableRow>{secondaryDisplayColumns.map((col, index) => (<TableHead key={`s-header-${col}-${index}`} className="font-bold bg-muted/50">{col}</TableHead>))}</TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {secondaryResults.length > 0 ? (
+                      secondaryResults.map((row, index) => (
+                        <TableRow key={`s-row-${index}`}>
+                          {secondaryDisplayColumns.map((col, colIndex) => (
+                            <TableCell key={`s-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col])}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow><TableCell colSpan={secondaryDisplayColumns.length || 1} className="h-24 text-center">Tidak ada data terkait yang ditemukan.</TableCell></TableRow>
+                    )}
+                  </TableBody>
                 </Table>
               </div>
             </main>
           </div>
-          <SheetFooter className="p-6 pt-0 bg-background border-t">
+
+          <DialogFooter className="p-6 pt-4 border-t">
              <Button variant="outline" onClick={() => handleCopyResults(secondaryResults, secondaryDisplayColumns, {})} disabled={secondaryResults.length === 0}><Copy className="w-4 h-4 mr-2" />Salin Hasil Sekunder</Button>
-             <SheetClose asChild><Button type="button" variant="secondary">Tutup</Button></SheetClose>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+             <DialogClose asChild><Button type="button" variant="secondary">Tutup</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
