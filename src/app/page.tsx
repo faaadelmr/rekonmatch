@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
@@ -38,7 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { type Row } from "@/lib/mock-data";
-import { FileUp, Search, Table as TableIcon, X, Loader2, ListFilter, Columns, Upload, Copy, AlertTriangle, ArrowUp, ArrowDown, Save, Trash2, CheckSquare, Link2, FileText, FileCheck2, ArrowRightLeft, Type, Palette, Filter, Settings } from "lucide-react";
+import { Sparkles, Sparkle, Table as TableIcon, X, Loader2, ListFilter, Columns, HeartHandshake, Copy, AlertTriangle, ArrowUp, ArrowDown, Heart, Trash2, CheckSquare, Flower2, FileText, FileCheck2, ArrowRightLeft, Type, Palette, Wand2, Settings, Upload, Filter, Search, Save, Link2 } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -99,6 +100,30 @@ export default function Home() {
   const primaryFileInputRef = useRef<HTMLInputElement>(null);
   const secondaryFileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const [currentTheme, setCurrentTheme] = useState('dark');
+
+  useEffect(() => {
+    // Function to update theme from localStorage
+    const updateTheme = () => {
+      const savedTheme = localStorage.getItem('rekonmatch_theme') || 'dark';
+      setCurrentTheme(savedTheme);
+    };
+
+    updateTheme(); // Set initial theme
+
+    // Listen for changes from other tabs/windows
+    window.addEventListener('storage', updateTheme);
+
+    // Create a custom event to listen for changes within the same tab
+    const handleThemeChange = () => updateTheme();
+    window.addEventListener('themeChanged', handleThemeChange);
+
+    return () => {
+      window.removeEventListener('storage', updateTheme);
+      window.removeEventListener('themeChanged', handleThemeChange);
+    };
+  }, []);
 
 
   const excelSerialDateToJSDate = (serial: number): Date | null => {
@@ -503,9 +528,11 @@ export default function Home() {
         <div className="absolute top-6 right-6"><ThemeSwitcher /></div>
         <Card className="w-full max-w-lg text-center shadow-2xl animate-fade-in-up border-0 bg-card/80 dark:bg-card/50 backdrop-blur-lg">
           <CardHeader className="pb-4">
-            <div className="mx-auto bg-primary/10 text-primary p-4 rounded-full w-fit mb-4"><FileUp className="w-10 h-10" /></div>
+            <div className="mx-auto bg-primary/10 text-primary p-4 rounded-full w-fit mb-4">
+              {currentTheme === 'pink' ? <Sparkles className="w-10 h-10" /> : <Sparkles className="w-10 h-10" />}
+            </div>
             <CardTitle className="text-4xl font-bold mt-2">RekonMatch</CardTitle>
-            <CardDescription className="text-lg text-muted-foreground pt-2">Unggah file Excel Anda untuk mulai memfilter multiple data.</CardDescription>
+            <CardDescription className="text-lg text-muted-foreground pt-2">Unggah file Excel Anda untuk mulai memfilter dan mencocokkan data.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Alert variant="destructive" className="text-left bg-amber-500/10 border-amber-500/30 text-amber-200">
@@ -515,7 +542,7 @@ export default function Home() {
             </Alert>
             <input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" />
             <Button size="lg" className="w-full text-lg py-7" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>
-              {isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Upload className="mr-2 h-6 w-6" />}
+              {isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-6 w-6" /> : <Upload className="mr-2 h-6 w-6" />)}
               Pilih File Excel Utama
             </Button>
           </CardContent>
@@ -537,11 +564,11 @@ export default function Home() {
             <Card>
                 <CardHeader><CardTitle className="text-2xl">1. Sumber Data</CardTitle><CardDescription>Unggah file, tukar peran jika perlu, dan hubungkan data Anda.</CardDescription></CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-start gap-6">
-                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Utama</CardTitle><CardDescription className="text-xs text-muted-foreground truncate" title={primaryFileName}>{primaryFileName || 'File yang akan difilter.'}</CardDescription></div>{primaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>{isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}{primaryData ? 'Ganti File Utama' : 'Pilih File Utama'}</Button></CardContent></Card>
+                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Utama</CardTitle><CardDescription className="text-xs text-muted-foreground truncate" title={primaryFileName}>{primaryFileName || 'File yang akan difilter.'}</CardDescription></div>{primaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>{isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />)}{primaryData ? 'Ganti File Utama' : 'Pilih File Utama'}</Button></CardContent></Card>
                     <div className="flex justify-center mt-8"><Button variant="outline" size="icon" onClick={handleSwapFiles} disabled={!isLinkingEnabled} aria-label="Tukar file utama dan sekunder" className="h-12 w-12 rounded-full"><ArrowRightLeft className="w-5 h-5" /></Button></div>
-                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Sekunder</CardTitle><CardDescription className="text-xs text-muted-foreground truncate" title={secondaryFileName}>{secondaryFileName || 'File untuk data terkait.'}</CardDescription></div>{secondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!primaryData || !!isLoadingFile}>{isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}{secondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}</Button></CardContent></Card>
+                    <Card className="h-full"><CardHeader className="flex flex-row items-start justify-between"><div><CardTitle className="flex items-center gap-2"><FileText className="w-5 h-5"/> Data Sekunder</CardTitle><CardDescription className="text-xs text-muted-foreground truncate" title={secondaryFileName}>{secondaryFileName || 'File untuk data terkait.'}</CardDescription></div>{secondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}</CardHeader><CardContent><input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" /><Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!primaryData || !!isLoadingFile}>{isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />)}{secondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}</Button></CardContent></Card>
                 </CardContent>
-                {isLinkingEnabled && (<><Separator /><CardHeader><CardTitle className="text-xl flex items-center gap-2"><Link2 className="w-5 h-5" />Hubungkan Data</CardTitle><CardDescription>Pilih kolom kunci dari setiap file untuk menghubungkan data.</CardDescription></CardHeader><CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><Label htmlFor="primary-link-col">Kolom Kunci Data Utama</Label><Select value={primaryLinkColumn} onValueChange={setPrimaryLinkColumn}><SelectTrigger id="primary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger><SelectContent>{primaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`p-link-${h}-${i}`} value={h}>{h}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="secondary-link-col">Kolom Kunci Data Sekunder</Label><Select value={secondaryLinkColumn} onValueChange={setSecondaryLinkColumn}><SelectTrigger id="secondary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger><SelectContent>{secondaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`s-link-${h}-${i}`} value={h}>{h}</SelectItem>)}</SelectContent></Select></div></CardContent></>)}
+                {isLinkingEnabled && (<><Separator /><CardHeader><CardTitle className="text-xl flex items-center gap-2">{currentTheme === 'pink' ? <Flower2 className="w-5 h-5" /> : <Link2 className="w-5 h-5" />}Hubungkan Data</CardTitle><CardDescription>Pilih kolom kunci dari setiap file untuk menghubungkan data.</CardDescription></CardHeader><CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><Label htmlFor="primary-link-col">Kolom Kunci Data Utama</Label><Select value={primaryLinkColumn} onValueChange={setPrimaryLinkColumn}><SelectTrigger id="primary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger><SelectContent>{primaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`p-link-${h}-${i}`} value={h}>{h}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="secondary-link-col">Kolom Kunci Data Sekunder</Label><Select value={secondaryLinkColumn} onValueChange={setSecondaryLinkColumn}><SelectTrigger id="secondary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger><SelectContent>{secondaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`s-link-${h}-${i}`} value={h}>{h}</SelectItem>)}</SelectContent></Select></div></CardContent></>)}
             </Card>
         </div>
 
@@ -551,12 +578,12 @@ export default function Home() {
                 <Separator className="my-4" />
                 <div className="space-y-4">
                   <div><Label className="font-semibold text-sm">Template Tampilan</Label><p className="text-xs text-muted-foreground">Simpan atau muat konfigurasi kolom.</p></div>
-                  <div className="flex gap-2"><Input placeholder="Nama template baru..." value={newPrimaryTemplateName} onChange={e => setNewPrimaryTemplateName(e.target.value)} /><Button onClick={() => handleSaveTemplate('primary')}><Save className="w-4 h-4" /></Button></div>
+                  <div className="flex gap-2"><Input placeholder="Nama template baru..." value={newPrimaryTemplateName} onChange={e => setNewPrimaryTemplateName(e.target.value)} /><Button onClick={() => handleSaveTemplate('primary')}>{currentTheme === 'pink' ? <Heart className="w-4 h-4" /> : <Save className="w-4 h-4" />}</Button></div>
                   {Object.keys(primaryDisplayTemplates).length > 0 && (<div className="space-y-2">{Object.keys(primaryDisplayTemplates).map(name => (<div key={name} className="flex items-center justify-between gap-2 p-2 border rounded-md"><p className="text-sm font-medium">{name}</p><div className='flex gap-1'><Button size="sm" variant="outline" onClick={() => handleLoadTemplate(name, 'primary')}><CheckSquare className="w-4 h-4 mr-2" /> Muat</Button><Button size="icon" variant="destructive" className="h-9 w-9" onClick={() => handleDeleteTemplate(name, 'primary')}><Trash2 className="w-4 h-4" /></Button></div></div>))}</div>)}
                 </div>
                 </AccordionContent></AccordionItem></Accordion></CardContent></Card>
-                <Card className="flex flex-col"><CardHeader><CardTitle className="flex items-center gap-2"><Search className="w-5 h-5"/>Kriteria Pencarian</CardTitle></CardHeader><CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">{Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map((col, index) => (<div key={`criteria-${col}-${index}`} className="space-y-2"><Label htmlFor={`textarea-${col}`} className="font-semibold">{col}</Label><div className="flex flex-col gap-2"><Select value={searchCriteria[col]?.operator || 'contains'} onValueChange={(op) => handleSearchOperatorChange(col, op as SearchOperator)}><SelectTrigger className="w-full h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Mengandung</SelectItem><SelectItem value="equals">Sama Dengan</SelectItem><SelectItem value="startsWith">Dimulai Dengan</SelectItem><SelectItem value="endsWith">Diakhiri Dengan</SelectItem></SelectContent></Select><Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value)} className="min-h-[100px]" /></div></div>)) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}</CardContent></Card>
-                <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center"><CardContent className="pt-6 text-center"><Button size="lg" className="w-full h-16 text-xl" onClick={handleRunQuery} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : <Filter className="mr-2 h-6 w-6" />}Jalankan Filter</Button></CardContent></Card>
+                <Card className="flex flex-col"><CardHeader><CardTitle className="flex items-center gap-2">{currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}Kriteria Pencarian</CardTitle></CardHeader><CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">{Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map((col, index) => (<div key={`criteria-${col}-${index}`} className="space-y-2"><Label htmlFor={`textarea-${col}`} className="font-semibold">{col}</Label><div className="flex flex-col gap-2"><Select value={searchCriteria[col]?.operator || 'contains'} onValueChange={(op) => handleSearchOperatorChange(col, op as SearchOperator)}><SelectTrigger className="w-full h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Mengandung</SelectItem><SelectItem value="equals">Sama Dengan</SelectItem><SelectItem value="startsWith">Dimulai Dengan</SelectItem><SelectItem value="endsWith">Diakhiri Dengan</SelectItem></SelectContent></Select><Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value)} className="min-h-[100px]" /></div></div>)) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}</CardContent></Card>
+                <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center"><CardContent className="pt-6 text-center"><Button size="lg" className="w-full h-16 text-xl" onClick={handleRunQuery} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <Wand2 className="mr-2 h-6 w-6" /> : <Filter className="mr-2 h-6 w-6" />)}Jalankan Filter</Button></CardContent></Card>
             </div></CardContent></Card>
         </div>
 
@@ -608,7 +635,7 @@ export default function Home() {
                   <div><Label className="font-semibold text-sm">Template Tampilan Sekunder</Label></div>
                   <div className="flex gap-2">
                     <Input placeholder="Nama template baru..." value={newSecondaryTemplateName} onChange={e => setNewSecondaryTemplateName(e.target.value)} />
-                    <Button onClick={() => handleSaveTemplate('secondary')}><Save className="w-4 h-4" /></Button>
+                    <Button onClick={() => handleSaveTemplate('secondary')}>{currentTheme === 'pink' ? <Heart className="w-4 h-4" /> : <Save className="w-4 h-4" />}</Button>
                   </div>
                   {Object.keys(secondaryDisplayTemplates).length > 0 && (
                     <div className="space-y-2">
@@ -649,7 +676,7 @@ export default function Home() {
                           <div><Label className="font-semibold text-sm">Template Tampilan Sekunder</Label></div>
                           <div className="flex gap-2">
                             <Input placeholder="Nama template baru..." value={newSecondaryTemplateName} onChange={e => setNewSecondaryTemplateName(e.target.value)} />
-                            <Button onClick={() => handleSaveTemplate('secondary')}><Save className="w-4 h-4" /></Button>
+                            <Button onClick={() => handleSaveTemplate('secondary')}>{currentTheme === 'pink' ? <Heart className="w-4 h-4" /> : <Save className="w-4 h-4" />}</Button>
                           </div>
                           {Object.keys(secondaryDisplayTemplates).length > 0 && (
                             <div className="space-y-2">
@@ -680,8 +707,7 @@ export default function Home() {
                       secondaryResults.map((row, index) => (
                         <TableRow key={`s-row-${index}`}>
                           {secondaryDisplayColumns.map((col, colIndex) => (
-                            <TableCell key={`s-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col])}</TableCell>
-                          ))}
+                            <TableCell key={`s-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col])}</TableCell>                          ))}
                         </TableRow>
                       ))
                     ) : (
@@ -702,3 +728,7 @@ export default function Home() {
     </main>
   );
 }
+
+    
+
+    
