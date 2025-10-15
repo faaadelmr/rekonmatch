@@ -94,7 +94,7 @@ export default function Home() {
   const [secondaryDisplayTemplates, setSecondaryDisplayTemplates] = useState<Record<string, string[]>>({});
   const [newSecondaryTemplateName, setNewSecondaryTemplateName] = useState('');
 
-
+  const [isQueryInvalid, setIsQueryInvalid] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState<'primary' | 'secondary' | false>(false);
   const primaryFileInputRef = useRef<HTMLInputElement>(null);
@@ -124,6 +124,12 @@ export default function Home() {
       window.removeEventListener('themeChanged', handleThemeChange);
     };
   }, []);
+
+  useEffect(() => {
+    const hasSearchCols = searchColumns.size > 0;
+    const hasSearchValues = Object.values(searchCriteria).some(c => c.value.trim() !== '');
+    setIsQueryInvalid(!hasSearchCols || !hasSearchValues);
+  }, [searchColumns, searchCriteria]);
 
 
   const excelSerialDateToJSDate = (serial: number): Date | null => {
@@ -399,65 +405,98 @@ export default function Home() {
   const handleColumnColorChange = (column: string, color: string) => setColumnColors(prev => ({...prev, [column]: color}));
 
   const handleRunQuery = useCallback(() => {
-    if (!primaryData) return;
+    if (!primaryData || isQueryInvalid) return;
     setIsProcessing(true);
   
     setTimeout(() => {
-      const activeSearchCriteria = Object.entries(searchCriteria)
-        .filter(([_, criterion]) => criterion && criterion.value.trim() !== '');
-  
-      if (activeSearchCriteria.length === 0) {
-        setFilteredResults(primaryData.rows);
-        setIsProcessing(false);
-        return;
-      }
-  
-      const finalResults: Row[] = [];
-      const allSearchTerms: { term: string, operator: SearchOperator, originalColumn: string }[] = [];
-  
-      activeSearchCriteria.forEach(([col, crit]) => {
-        const terms = crit.value.split(/,|\n/).map(s => s.trim()).filter(s => s);
-        terms.forEach(term => {
-          allSearchTerms.push({ term, operator: crit.operator, originalColumn: col });
-        });
-      });
-  
-      allSearchTerms.forEach(({ term, operator, originalColumn }) => {
-        const searchTermLower = term.toLowerCase();
-        let termFound = false;
-  
-        primaryData.rows.forEach(row => {
-          const searchColsToCheck = Array.from(searchColumns);
-          const isMatch = searchColsToCheck.some(col => {
-            const cellValue = String(row[col] ?? '').toLowerCase();
-            switch (operator) {
-              case 'contains': return cellValue.includes(searchTermLower);
-              case 'equals': return cellValue === searchTermLower;
-              case 'startsWith': return cellValue.startsWith(searchTermLower);
-              case 'endsWith': return cellValue.endsWith(searchTermLower);
-              default: return false;
-            }
-          });
-  
-          if (isMatch) {
-            finalResults.push(row);
-            termFound = true;
-          }
-        });
-  
-        if (!termFound) {
-          const notFoundRow: Row = { __isNotFound: true };
-          Array.from(searchColumns).forEach(sc => {
-            notFoundRow[sc] = term;
-          });
-          finalResults.push(notFoundRow);
+        const activeSearchCriteria = Object.entries(searchCriteria)
+            .filter(([col, crit]) => crit && crit.value.trim() !== '' && searchColumns.has(col));
+
+        if (activeSearchCriteria.length === 0) {
+            setFilteredResults(primaryData.rows);
+            setIsProcessing(false);
+            return;
         }
-      });
-  
-      setFilteredResults(finalResults);
-      setIsProcessing(false);
+
+        // Prepare search terms for each column (supports multiple values via comma/newline)
+        const columnSearchTerms = new Map<string, { operator: SearchOperator, terms: string[] }>();
+        activeSearchCriteria.forEach(([col, crit]) => {
+            const terms = crit.value.split(/,|\n/).map(s => s.trim().toLowerCase()).filter(s => s);
+            if (terms.length > 0) {
+                columnSearchTerms.set(col, { operator: crit.operator, terms });
+            }
+        });
+
+        // Filter the data
+        const matchedRows = primaryData.rows.filter(row => {
+            // Check if the row matches ALL column criteria (AND logic)
+            return Array.from(columnSearchTerms.entries()).every(([col, { operator, terms }]) => {
+                const cellValue = String(row[col] ?? '').toLowerCase();
+                if (cellValue === '') return false;
+
+                // Check if the cell value matches ANY of the terms for that column (OR logic)
+                return terms.some(term => {
+                    switch (operator) {
+                        case 'contains': return cellValue.includes(term);
+                        case 'equals': return cellValue === term;
+                        case 'startsWith': return cellValue.startsWith(term);
+                        case 'endsWith': return cellValue.endsWith(term);
+                        default: return false;
+                    }
+                });
+            });
+        });
+
+        // Find which search terms didn't find any match to display as "not found"
+        const allInputTerms = new Set<string>();
+        columnSearchTerms.forEach(({ terms }) => terms.forEach(term => allInputTerms.add(term)));
+
+        const foundTerms = new Set<string>();
+        matchedRows.forEach(row => {
+            columnSearchTerms.forEach((_, col) => {
+                 const cellValue = String(row[col] ?? '').toLowerCase();
+                 if (cellValue) {
+                     foundTerms.add(cellValue); // Simplified: add the whole cell value if row matched
+                 }
+            });
+        });
+        
+        const notFoundTerms: string[] = [];
+        activeSearchCriteria.forEach(([col, { value }]) => {
+            const inputValues = value.split(/,|\n/).map(s => s.trim()).filter(s => s);
+            inputValues.forEach(inputValue => {
+                const termLower = inputValue.toLowerCase();
+                
+                const termWasFound = matchedRows.some(row => {
+                    const cellValue = String(row[col] ?? '').toLowerCase();
+                    const operator = columnSearchTerms.get(col)!.operator;
+                    switch (operator) {
+                        case 'contains': return cellValue.includes(termLower);
+                        case 'equals': return cellValue === termLower;
+                        case 'startsWith': return cellValue.startsWith(termLower);
+                        case 'endsWith': return cellValue.endsWith(termLower);
+                        default: return false;
+                    }
+                });
+
+                if (!termWasFound) {
+                    notFoundTerms.push(inputValue);
+                }
+            });
+        });
+
+        const notFoundRows = notFoundTerms.map(term => {
+            const notFoundRow: Row = { __isNotFound: true };
+            Array.from(searchColumns).forEach(sc => {
+                notFoundRow[sc] = term;
+            });
+            return notFoundRow;
+        });
+
+        setFilteredResults([...matchedRows, ...notFoundRows]);
+        setIsProcessing(false);
     }, 500);
-  }, [primaryData, searchCriteria, searchColumns]);
+}, [primaryData, searchCriteria, searchColumns, isQueryInvalid]);
   
   
   const handleCopyResults = useCallback((dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => {
@@ -583,7 +622,7 @@ export default function Home() {
                 </div>
                 </AccordionContent></AccordionItem></Accordion></CardContent></Card>
                 <Card className="flex flex-col"><CardHeader><CardTitle className="flex items-center gap-2">{currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}Kriteria Pencarian</CardTitle></CardHeader><CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">{Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map((col, index) => (<div key={`criteria-${col}-${index}`} className="space-y-2"><Label htmlFor={`textarea-${col}`} className="font-semibold">{col}</Label><div className="flex flex-col gap-2"><Select value={searchCriteria[col]?.operator || 'contains'} onValueChange={(op) => handleSearchOperatorChange(col, op as SearchOperator)}><SelectTrigger className="w-full h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Mengandung</SelectItem><SelectItem value="equals">Sama Dengan</SelectItem><SelectItem value="startsWith">Dimulai Dengan</SelectItem><SelectItem value="endsWith">Diakhiri Dengan</SelectItem></SelectContent></Select><Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value)} className="min-h-[100px]" /></div></div>)) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}</CardContent></Card>
-                <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center"><CardContent className="pt-6 text-center"><Button size="lg" className="w-full h-16 text-xl" onClick={handleRunQuery} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <Wand2 className="mr-2 h-6 w-6" /> : <Filter className="mr-2 h-6 w-6" />)}Jalankan Filter</Button></CardContent></Card>
+                <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center"><CardContent className="pt-6 text-center"><Button size="lg" className="w-full h-16 text-xl" onClick={handleRunQuery} disabled={isProcessing || isQueryInvalid}>{isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <Wand2 className="mr-2 h-6 w-6" /> : <Filter className="mr-2 h-6 w-6" />)}Jalankan Filter</Button></CardContent></Card>
             </div></CardContent></Card>
         </div>
 
@@ -729,6 +768,3 @@ export default function Home() {
   );
 }
 
-    
-
-    
