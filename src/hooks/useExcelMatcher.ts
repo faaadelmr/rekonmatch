@@ -58,6 +58,7 @@ export const useExcelMatcher = () => {
   const { toast } = useToast();
 
   const [currentTheme, setCurrentTheme] = useState('dark');
+  const [includeEmptyRowsInResults, setIncludeEmptyRowsInResults] = useState(true);
 
   useEffect(() => {
     const updateTheme = () => {
@@ -300,35 +301,16 @@ export const useExcelMatcher = () => {
     setIsProcessing(true);
     
     setTimeout(() => {
-      const activeSearchCriteria = Object.entries(searchCriteria)
-        .filter(([col, crit]) => crit && crit.value.trim() !== '' && searchColumns.has(col));
-      
-      if (activeSearchCriteria.length === 0) {
-        setFilteredResults(primaryData.rows);
-        setIsProcessing(false);
-        return;
-      }
+      const activeSearchCriteria = Object.fromEntries(
+        Object.entries(searchCriteria).filter(([col, crit]) => searchColumns.has(col) && crit?.value)
+      );
 
-      const checkMatch = (value: string, operator: SearchOperator, term: string): boolean => {
-        const val = String(value ?? '').toLowerCase();
-        const t = String(term ?? '').toLowerCase();
-        if (!t) return false;
-        switch (operator) {
-          case 'contains': return val.includes(t);
-          case 'equals': return val === t;
-          case 'startsWith': return val.startsWith(t);
-          case 'endsWith': return val.endsWith(t);
-          default: return false;
-        }
-      };
+      const parsedCriteria = Object.entries(activeSearchCriteria).reduce((acc, [col, crit]) => {
+        acc[col] = crit.value.split(/,|\n/);
+        return acc;
+      }, {} as Record<string, string[]>);
 
-      const parsedCriteria = activeSearchCriteria.map(([col, crit]) => ({
-        col,
-        terms: crit.value.split(/,|\n/).map(s => s.trim()).filter(s => s !== ''),
-        operator: crit.operator
-      }));
-
-      const longestInputLength = Math.max(0, ...parsedCriteria.map(c => c.terms.length));
+      const longestInputLength = Math.max(0, ...Object.values(parsedCriteria).map(terms => terms.length));
       
       const finalResults: Row[] = [];
       const usedDataIndicesCount = new Map<number, number>();
@@ -337,56 +319,70 @@ export const useExcelMatcher = () => {
         const termRow: Record<string, string> = {};
         let hasValueThisRow = false;
 
-        parsedCriteria.forEach(({ col, terms }) => {
-            const term = terms[i] ?? terms[terms.length - 1];
-            if (term !== undefined) {
-              termRow[col] = term;
-              if (terms[i] !== undefined) {
-                hasValueThisRow = true;
-              }
+        Object.keys(activeSearchCriteria).forEach(col => {
+            const terms = parsedCriteria[col] || [];
+            const term = terms.length > i ? terms[i] : terms[terms.length - 1] || '';
+             if (term.trim() !== '') {
+                termRow[col] = term.trim();
+                if(terms.length > i) hasValueThisRow = true;
             }
         });
-
-        if (!hasValueThisRow && i >= Math.max(...parsedCriteria.map(c => c.terms.length))) continue;
         
-        const availableData = primaryData.rows.map((row, index) => ({ row, originalIndex: index }));
+        if (!hasValueThisRow) {
+             if (includeEmptyRowsInResults) {
+                finalResults.push({});
+            }
+            continue;
+        }
 
-        const foundMatches = availableData.filter(({ row }) => {
-            if (!row) return false;
+        const checkMatch = (value: string, operator: SearchOperator, term: string): boolean => {
+            const val = String(value ?? '').toLowerCase();
+            const t = String(term ?? '').toLowerCase();
+            if (!t) return false;
+            switch (operator) {
+            case 'contains': return val.includes(t);
+            case 'equals': return val === t;
+            case 'startsWith': return val.startsWith(t);
+            case 'endsWith': return val.endsWith(t);
+            default: return false;
+            }
+        };
+
+        const foundMatches = primaryData.rows
+          .map((row, index) => ({ row, originalIndex: index }))
+          .filter(({ row }) => {
             return Object.entries(termRow).every(([col, term]) => {
                 const cellValue = String(row[col] ?? '');
-                const { operator } = searchCriteria[col];
+                const { operator } = activeSearchCriteria[col];
                 return checkMatch(cellValue, operator, term);
             });
         });
 
         if (foundMatches.length > 0) {
-          foundMatches.forEach(({ row, originalIndex }) => {
-            const currentCount = usedDataIndicesCount.get(originalIndex) || 0;
-            if (currentCount > 0) {
-                const duplicateRow: Row = { __isNotFound: true };
-                Object.keys(termRow).forEach(col => {
-                    duplicateRow[col] = `Data duplikasi, ${currentCount} Data sudah ada`;
-                });
-                finalResults.push(duplicateRow);
-            } else {
-                finalResults.push(row);
-            }
-            usedDataIndicesCount.set(originalIndex, currentCount + 1);
-          });
+            foundMatches.forEach(({ row, originalIndex }) => {
+                const currentCount = usedDataIndicesCount.get(originalIndex) || 0;
+                if (currentCount > 0) {
+                    const duplicateRow: Row = { __isNotFound: true };
+                     Object.keys(termRow).forEach(col => {
+                        duplicateRow[col] = `Data duplikasi, ${currentCount} Data sudah ada`;
+                    });
+                    finalResults.push(duplicateRow);
+                } else {
+                    finalResults.push(row);
+                }
+                usedDataIndicesCount.set(originalIndex, currentCount + 1);
+            });
         } else {
-          const notFoundRow: Row = { __isNotFound: true };
-          Object.entries(termRow).forEach(([col, term]) => {
-            notFoundRow[col] = term;
-          });
-          finalResults.push(notFoundRow);
+            const notFoundRow: Row = { __isNotFound: true };
+            Object.assign(notFoundRow, termRow);
+            finalResults.push(notFoundRow);
         }
       }
       
       setFilteredResults(finalResults);
       setIsProcessing(false);
     }, 500);
-  }, [primaryData, searchCriteria, searchColumns, isQueryInvalid]);
+  }, [primaryData, searchCriteria, searchColumns, isQueryInvalid, includeEmptyRowsInResults]);
 
   const { formatCell } = require('@/app/page');
   
@@ -490,6 +486,8 @@ export const useExcelMatcher = () => {
     secondaryDisplayTemplates,
     newSecondaryTemplateName,
     setNewSecondaryTemplateName,
+    includeEmptyRowsInResults,
+    setIncludeEmptyRowsInResults,
     handleSearchColumnToggle,
     handleSelectAllDisplayColumns,
     handleDisplayColumnToggle,
@@ -509,8 +507,5 @@ export const useExcelMatcher = () => {
     handleSelectAllSecondaryDisplayColumns
   };
 };
-
-    
-    
 
     

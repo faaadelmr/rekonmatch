@@ -49,6 +49,8 @@ export default function Home() {
     secondaryDisplayColumns,
     secondaryDisplayTemplates,
     newSecondaryTemplateName,
+    includeEmptyRowsInResults,
+    setIncludeEmptyRowsInResults,
     handleSearchColumnToggle,
     handleSelectAllDisplayColumns,
     handleDisplayColumnToggle,
@@ -142,6 +144,8 @@ export default function Home() {
             isQueryInvalid={isQueryInvalid}
             isProcessing={isProcessing}
             currentTheme={currentTheme}
+            includeEmptyRowsInResults={includeEmptyRowsInResults}
+            setIncludeEmptyRowsInResults={setIncludeEmptyRowsInResults}
             handleSearchColumnToggle={handleSearchColumnToggle}
             handleSelectAllDisplayColumns={handleSelectAllDisplayColumns}
             handleDisplayColumnToggle={handleDisplayColumnToggle}
@@ -255,3 +259,5 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
       return String(value);
   }
 };
+
+    

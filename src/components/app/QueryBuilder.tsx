@@ -26,6 +26,8 @@ interface QueryBuilderProps {
   isQueryInvalid: boolean;
   isProcessing: boolean;
   currentTheme: string;
+  includeEmptyRowsInResults: boolean;
+  setIncludeEmptyRowsInResults: (checked: boolean) => void;
   handleSearchColumnToggle: (column: string, checked: boolean) => void;
   handleSelectAllDisplayColumns: (checked: boolean) => void;
   handleDisplayColumnToggle: (column: string, checked: boolean) => void;
@@ -53,6 +55,8 @@ export default function QueryBuilder({
   isQueryInvalid,
   isProcessing,
   currentTheme,
+  includeEmptyRowsInResults,
+  setIncludeEmptyRowsInResults,
   handleSearchColumnToggle,
   handleSelectAllDisplayColumns,
   handleDisplayColumnToggle,
@@ -195,7 +199,11 @@ export default function QueryBuilder({
           </Card>
           
           <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center">
-            <CardContent className="pt-6 text-center">
+            <CardContent className="pt-6 text-center space-y-4">
+               <div className="flex items-center space-x-2 justify-center">
+                <Checkbox id="include-empty-rows" checked={includeEmptyRowsInResults} onCheckedChange={setIncludeEmptyRowsInResults} />
+                <Label htmlFor="include-empty-rows" className="font-normal cursor-pointer">Sertakan Baris Kosong di Hasil</Label>
+              </div>
               <Button size="lg" className="w-full h-16 text-xl" onClick={handleRunQuery} disabled={isProcessing || isQueryInvalid}>
                 {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <Wand2 className="mr-2 h-6 w-6" /> : <Filter className="mr-2 h-6 w-6" />)}
                 Jalankan Filter
@@ -207,3 +215,5 @@ export default function QueryBuilder({
     </Card>
   );
 }
+
+    
