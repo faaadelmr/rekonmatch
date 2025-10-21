@@ -7,12 +7,11 @@ import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, FileText, FileCheck2, ArrowRightLeft, Upload, HeartHandshake, Flower2, Link2 } from "lucide-react";
-import { type ExcelData } from "@/hooks/useExcelMatcher";
 
 interface DataSourceManagerProps {
-  primaryData: ExcelData | null;
+  primaryDataHeaders: string[];
   primaryFileName: string;
-  secondaryData: ExcelData | null;
+  secondaryDataHeaders: string[];
   secondaryFileName: string;
   isLoadingFile: 'primary' | 'secondary' | false;
   primaryFileInputRef: React.RefObject<HTMLInputElement>;
@@ -29,9 +28,9 @@ interface DataSourceManagerProps {
 }
 
 export default function DataSourceManager({
-  primaryData,
+  primaryDataHeaders,
   primaryFileName,
-  secondaryData,
+  secondaryDataHeaders,
   secondaryFileName,
   isLoadingFile,
   primaryFileInputRef,
@@ -46,6 +45,9 @@ export default function DataSourceManager({
   setSecondaryLinkColumn,
   currentTheme
 }: DataSourceManagerProps) {
+  const hasPrimaryData = primaryDataHeaders.length > 0;
+  const hasSecondaryData = secondaryDataHeaders.length > 0;
+
   return (
     <Card>
       <CardHeader>
@@ -61,13 +63,13 @@ export default function DataSourceManager({
                 {primaryFileName || 'File yang akan difilter.'}
               </CardDescription>
             </div>
-            {primaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}
+            {hasPrimaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}
           </CardHeader>
           <CardContent>
             <input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" />
             <Button className="w-full" onClick={() => handleUploadClick('primary')} disabled={!!isLoadingFile}>
               {isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />)}
-              {primaryData ? 'Ganti File Utama' : 'Pilih File Utama'}
+              {hasPrimaryData ? 'Ganti File Utama' : 'Pilih File Utama'}
             </Button>
           </CardContent>
         </Card>
@@ -86,13 +88,13 @@ export default function DataSourceManager({
                 {secondaryFileName || 'File untuk data terkait.'}
               </CardDescription>
             </div>
-            {secondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}
+            {hasSecondaryData && <FileCheck2 className="w-5 h-5 text-green-500" />}
           </CardHeader>
           <CardContent>
             <input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" />
-            <Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!primaryData || !!isLoadingFile}>
+            <Button className="w-full" onClick={() => handleUploadClick('secondary')} disabled={!hasPrimaryData || !!isLoadingFile}>
               {isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />)}
-              {secondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}
+              {hasSecondaryData ? 'Ganti File Sekunder' : 'Pilih File Sekunder'}
             </Button>
           </CardContent>
         </Card>
@@ -113,7 +115,7 @@ export default function DataSourceManager({
               <Select value={primaryLinkColumn} onValueChange={setPrimaryLinkColumn}>
                 <SelectTrigger id="primary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger>
                 <SelectContent>
-                  {primaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`p-link-${h}-${i}`} value={h}>{h}</SelectItem>)}
+                  {primaryDataHeaders.filter(h => h).map((h, i) => <SelectItem key={`p-link-${h}-${i}`} value={h}>{h}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -122,7 +124,7 @@ export default function DataSourceManager({
               <Select value={secondaryLinkColumn} onValueChange={setSecondaryLinkColumn}>
                 <SelectTrigger id="secondary-link-col"><SelectValue placeholder="Pilih kolom..." /></SelectTrigger>
                 <SelectContent>
-                  {secondaryData?.headers.filter(h => h).map((h, i) => <SelectItem key={`s-link-${h}-${i}`} value={h}>{h}</SelectItem>)}
+                  {secondaryDataHeaders.filter(h => h).map((h, i) => <SelectItem key={`s-link-${h}-${i}`} value={h}>{h}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

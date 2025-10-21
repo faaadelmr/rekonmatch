@@ -15,9 +15,9 @@ import SecondaryDataDialog from '@/components/app/SecondaryDataDialog';
 export default function Home() {
   const {
     appState,
-    primaryData,
+    primaryDataHeaders,
     primaryFileName,
-    secondaryData,
+    secondaryDataHeaders,
     secondaryFileName,
     isLoadingFile,
     primaryFileInputRef,
@@ -112,9 +112,9 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-3">
           <DataSourceManager
-            primaryData={primaryData}
+            primaryDataHeaders={primaryDataHeaders}
             primaryFileName={primaryFileName}
-            secondaryData={secondaryData}
+            secondaryDataHeaders={secondaryDataHeaders}
             secondaryFileName={secondaryFileName}
             isLoadingFile={isLoadingFile}
             primaryFileInputRef={primaryFileInputRef}
@@ -133,7 +133,7 @@ export default function Home() {
 
         <div className="lg:col-span-3">
           <QueryBuilder
-            primaryData={primaryData}
+            primaryDataHeaders={primaryDataHeaders}
             searchColumns={searchColumns}
             displayColumns={displayColumns}
             columnTypes={columnTypes}
@@ -183,7 +183,7 @@ export default function Home() {
         isOpen={isSecondarySheetOpen}
         onOpenChange={setIsSecondarySheetOpen}
         currentLookupValue={currentLookupValue}
-        secondaryData={secondaryData}
+        secondaryDataHeaders={secondaryDataHeaders}
         secondaryResults={secondaryResults}
         secondaryDisplayColumns={secondaryDisplayColumns}
         secondaryDisplayTemplates={secondaryDisplayTemplates}
@@ -259,5 +259,3 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
       return String(value);
   }
 };
-
-    

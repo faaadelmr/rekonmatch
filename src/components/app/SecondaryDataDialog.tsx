@@ -11,13 +11,13 @@ import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Copy, Settings, Save, Heart, CheckSquare, Trash2 } from "lucide-react";
 import { type Row } from "@/lib/mock-data";
-import { type ExcelData, type ColumnType } from "@/hooks/useExcelMatcher";
+import { type ColumnType } from "@/hooks/useExcelMatcher";
 
 interface SecondaryDataDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   currentLookupValue: string | number;
-  secondaryData: ExcelData | null;
+  secondaryDataHeaders: string[];
   secondaryResults: Row[];
   secondaryDisplayColumns: string[];
   secondaryDisplayTemplates: Record<string, string[]>;
@@ -37,7 +37,7 @@ export default function SecondaryDataDialog({
   isOpen,
   onOpenChange,
   currentLookupValue,
-  secondaryData,
+  secondaryDataHeaders,
   secondaryResults,
   secondaryDisplayColumns,
   secondaryDisplayTemplates,
@@ -67,11 +67,11 @@ export default function SecondaryDataDialog({
             <h3 className="font-semibold text-lg flex items-center gap-2"><Settings className="w-5 h-5"/>Opsi Tampilan</h3>
             <Separator />
             <div className="flex items-center space-x-2">
-              <Checkbox id="secondary-display-all" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false} />
+              <Checkbox id="secondary-display-all" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryDataHeaders ? secondaryDisplayColumns.length === secondaryDataHeaders.length : false} />
               <Label htmlFor="secondary-display-all" className="font-semibold">Pilih Semua</Label>
             </div>
             <div className="flex-1 space-y-2 pr-2">
-              {secondaryData?.headers.map((col, index) => (
+              {secondaryDataHeaders.map((col, index) => (
                 <div key={`secondary-display-${col}-${index}`} className="flex items-center space-x-2">
                   <Checkbox id={`secondary-display-${col}-${index}`} onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)} checked={secondaryDisplayColumns.includes(col)} />
                   <Label htmlFor={`secondary-display-${col}-${index}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label>
@@ -108,11 +108,11 @@ export default function SecondaryDataDialog({
                   <AccordionTrigger><Settings className="mr-2" /> Tampilkan Opsi Tampilan</AccordionTrigger>
                   <AccordionContent className="flex flex-col gap-4 pt-4">
                       <div className="flex items-center space-x-2">
-                        <Checkbox id="secondary-display-all-mobile" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryData ? secondaryDisplayColumns.length === secondaryData.headers.length : false} />
+                        <Checkbox id="secondary-display-all-mobile" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryDataHeaders ? secondaryDisplayColumns.length === secondaryDataHeaders.length : false} />
                         <Label htmlFor="secondary-display-all-mobile" className="font-semibold">Pilih Semua</Label>
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-2 pr-2 max-h-48">
-                        {secondaryData?.headers.map((col, index) => (
+                        {secondaryDataHeaders.map((col, index) => (
                           <div key={`secondary-display-${col}-mobile-${index}`} className="flex items-center space-x-2">
                             <Checkbox id={`secondary-display-${col}-mobile-${index}`} onCheckedChange={(checked) => handleSecondaryDisplayColumnToggle(col, !!checked)} checked={secondaryDisplayColumns.includes(col)} />
                             <Label htmlFor={`secondary-display-${col}-mobile-${index}`} className="font-normal cursor-pointer flex-1 text-sm">{col}</Label>

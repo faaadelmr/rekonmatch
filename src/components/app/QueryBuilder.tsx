@@ -11,11 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { ListFilter, ArrowUp, ArrowDown, Type, Palette, Save, Heart, CheckSquare, Trash2, Search, Sparkle, Filter, Wand2, Loader2 } from "lucide-react";
-import { type ExcelData, type ColumnType, type SearchOperator, type SearchCriterion } from "@/hooks/useExcelMatcher";
+import { type ColumnType, type SearchOperator, type SearchCriterion } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
 
 interface QueryBuilderProps {
-  primaryData: ExcelData | null;
+  primaryDataHeaders: string[];
   searchColumns: Set<string>;
   displayColumns: string[];
   columnTypes: Record<string, ColumnType>;
@@ -44,7 +44,7 @@ interface QueryBuilderProps {
 }
 
 export default function QueryBuilder({
-  primaryData,
+  primaryDataHeaders,
   searchColumns,
   displayColumns,
   columnTypes,
@@ -86,7 +86,7 @@ export default function QueryBuilder({
                 <AccordionItem value="search-cols">
                   <AccordionTrigger>Kolom Pencarian</AccordionTrigger>
                   <AccordionContent className="space-y-2 max-h-48 overflow-y-auto pr-4">
-                    {primaryData?.headers.map((col, index) => (
+                    {primaryDataHeaders.map((col, index) => (
                       <div key={`search-${col}-${index}`} className="flex items-center space-x-2">
                         <Checkbox id={`search-${col}-${index}`} onCheckedChange={(checked) => handleSearchColumnToggle(col, !!checked)} checked={searchColumns.has(col)} />
                         <Label htmlFor={`search-${col}-${index}`} className="font-normal cursor-pointer flex-1">{col}</Label>
@@ -98,11 +98,11 @@ export default function QueryBuilder({
                   <AccordionTrigger>Kolom Tampilan & Format</AccordionTrigger>
                   <AccordionContent className="space-y-2">
                     <div className="flex items-center space-x-2 pb-2 border-b">
-                      <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={primaryData ? displayColumns.length === primaryData.headers.length : false} />
+                      <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={primaryDataHeaders ? displayColumns.length === primaryDataHeaders.length : false} />
                       <Label htmlFor="display-all" className="font-semibold">Pilih Semua</Label>
                     </div>
                     <div className="max-h-96 overflow-y-auto pr-2 pt-2 space-y-1">
-                      {primaryData?.headers.map((col, i) => {
+                      {primaryDataHeaders.map((col, i) => {
                         const isDisplayed = displayColumns.includes(col);
                         const index = displayColumns.indexOf(col);
                         return (
@@ -215,5 +215,3 @@ export default function QueryBuilder({
     </Card>
   );
 }
-
-    

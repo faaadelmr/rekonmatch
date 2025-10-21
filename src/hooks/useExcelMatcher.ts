@@ -4,6 +4,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { type Row } from "@/lib/mock-data";
+import { set, get, clear } from 'idb-keyval';
 
 type AppState = 'initial' | 'loaded';
 export interface ExcelData {
@@ -21,8 +22,7 @@ export interface SearchCriterion {
 export const useExcelMatcher = () => {
   const [appState, setAppState] = useState<AppState>('initial');
   
-  // State for File 1 (Primary)
-  const [primaryData, setPrimaryData] = useState<ExcelData | null>(null);
+  const [primaryDataHeaders, setPrimaryDataHeaders] = useState<string[]>([]);
   const [primaryFileName, setPrimaryFileName] = useState<string>('');
   const [searchColumns, setSearchColumns] = useState<Set<string>>(new Set());
   const [displayColumns, setDisplayColumns] = useState<string[]>([]);
@@ -33,15 +33,12 @@ export const useExcelMatcher = () => {
   const [primaryDisplayTemplates, setPrimaryDisplayTemplates] = useState<Record<string, string[]>>({});
   const [newPrimaryTemplateName, setNewPrimaryTemplateName] = useState('');
 
-  // State for File 2 (Secondary)
-  const [secondaryData, setSecondaryData] = useState<ExcelData | null>(null);
+  const [secondaryDataHeaders, setSecondaryDataHeaders] = useState<string[]>([]);
   const [secondaryFileName, setSecondaryFileName] = useState<string>('');
   
-  // Linking state
   const [primaryLinkColumn, setPrimaryLinkColumn] = useState<string>('');
   const [secondaryLinkColumn, setSecondaryLinkColumn] = useState<string>('');
   
-  // Secondary results state
   const [secondaryResults, setSecondaryResults] = useState<Row[]>([]);
   const [secondaryDisplayColumns, setSecondaryDisplayColumns] = useState<string[]>([]);
   const [isSecondarySheetOpen, setIsSecondarySheetOpen] = useState(false);
@@ -59,6 +56,46 @@ export const useExcelMatcher = () => {
 
   const [currentTheme, setCurrentTheme] = useState('dark');
   const [includeEmptyRowsInResults, setIncludeEmptyRowsInResults] = useState(true);
+
+  useEffect(() => {
+    const checkDb = async () => {
+      try {
+        const primaryHeaders = await get('primary_headers');
+        if (primaryHeaders && primaryHeaders.length > 0) {
+          setPrimaryDataHeaders(primaryHeaders);
+          const primaryName = await get('primary_fileName');
+          setPrimaryFileName(primaryName || '');
+          
+          const secondaryHeaders = await get('secondary_headers');
+          if (secondaryHeaders && secondaryHeaders.length > 0) {
+            setSecondaryDataHeaders(secondaryHeaders);
+            const secondaryName = await get('secondary_fileName');
+            setSecondaryFileName(secondaryName || '');
+          }
+          
+          // Memuat pengaturan kolom dari local storage
+          const savedDisplayCols = localStorage.getItem('rekonMatch_displayColumns');
+          if (savedDisplayCols) setDisplayColumns(JSON.parse(savedDisplayCols));
+          else setDisplayColumns(primaryHeaders);
+          
+          const savedSearchCols = localStorage.getItem('rekonMatch_searchColumns');
+          if(savedSearchCols) setSearchColumns(new Set(JSON.parse(savedSearchCols)));
+
+          const savedColTypes = localStorage.getItem('rekonMatch_columnTypes');
+          if(savedColTypes) setColumnTypes(JSON.parse(savedColTypes));
+          
+          const savedColColors = localStorage.getItem('rekonMatch_columnColors');
+          if(savedColColors) setColumnColors(JSON.parse(savedColColors));
+
+          setAppState('loaded');
+        }
+      } catch (error) {
+        console.error("Gagal memeriksa IndexedDB saat inisialisasi:", error);
+      }
+    };
+    checkDb();
+  }, []);
+
 
   useEffect(() => {
     const updateTheme = () => {
@@ -141,30 +178,59 @@ export const useExcelMatcher = () => {
     }
   };
 
-  const resetPrimaryDataStates = (data: ExcelData | null) => {
-    setDisplayColumns(data ? data.headers : []);
+  const resetPrimaryDataStates = (headers: string[] | null) => {
+    const newHeaders = headers || [];
+    setDisplayColumns(newHeaders);
+    localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(newHeaders));
     setSearchColumns(new Set());
+    localStorage.removeItem('rekonMatch_searchColumns');
     setSearchCriteria({});
     setFilteredResults(null);
     setPrimaryLinkColumn('');
     setColumnTypes({});
+    localStorage.removeItem('rekonMatch_columnTypes');
     setColumnColors({});
+    localStorage.removeItem('rekonMatch_columnColors');
   };
 
-  const handleSwapFiles = () => {
-    if (!primaryData || !secondaryData) return;
-    const tempPrimary = { data: primaryData, name: primaryFileName };
-    setPrimaryData(secondaryData);
-    setPrimaryFileName(secondaryFileName);
-    setSecondaryData(tempPrimary.data);
-    setSecondaryFileName(tempPrimary.name);
+  const handleSwapFiles = async () => {
+    try {
+        const pHeaders = await get('primary_headers');
+        const pName = await get('primary_fileName');
+        const sHeaders = await get('secondary_headers');
+        const sName = await get('secondary_fileName');
 
-    const tempPrimaryLink = primaryLinkColumn;
-    setPrimaryLinkColumn(secondaryLinkColumn);
-    setSecondaryLinkColumn(tempPrimaryLink);
+        if (!pHeaders || !sHeaders) {
+            toast({ variant: "destructive", title: "Data Tidak Lengkap", description: "Kedua file harus ada untuk ditukar." });
+            return;
+        }
 
-    resetPrimaryDataStates(secondaryData);
-    toast({ title: "Data Ditukar", description: "Peran data utama dan sekunder telah berhasil ditukar." });
+        const pRows = await get('primary_rows');
+        const sRows = await get('secondary_rows');
+        
+        await set('primary_headers', sHeaders);
+        await set('primary_fileName', sName);
+        await set('primary_rows', sRows);
+
+        await set('secondary_headers', pHeaders);
+        await set('secondary_fileName', pName);
+        await set('secondary_rows', pRows);
+
+        setPrimaryDataHeaders(sHeaders);
+        setPrimaryFileName(sName);
+        setSecondaryDataHeaders(pHeaders);
+        setSecondaryFileName(pName);
+
+        const tempPrimaryLink = primaryLinkColumn;
+        setPrimaryLinkColumn(secondaryLinkColumn);
+        setSecondaryLinkColumn(tempPrimaryLink);
+
+        resetPrimaryDataStates(sHeaders);
+        toast({ title: "Data Ditukar", description: "Peran data utama dan sekunder telah berhasil ditukar." });
+    } catch(e) {
+        console.error("Gagal menukar file:", e);
+        toast({ variant: "destructive", title: "Gagal Menukar", description: "Terjadi kesalahan saat menukar data." });
+    }
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'secondary') => {
@@ -172,15 +238,13 @@ export const useExcelMatcher = () => {
     if (!file) return;
 
     setIsLoadingFile(fileType);
-    const reader = new FileReader();
-
-    reader.onload = async (e) => {
-      try {
-        const XLSX = await import('xlsx');
-        const fileContent = e.target?.result;
-        if (!fileContent) throw new Error("Gagal membaca konten file.");
+    toast({ title: 'Memproses File...', description: `Membaca ${file.name}. Ini mungkin memakan waktu untuk file besar.` });
+    
+    try {
+        const XLSX = (await import('xlsx'));
+        const fileContent = await file.arrayBuffer();
         
-        const workbook = XLSX.read(fileContent, { type: 'array', cellDates: true });
+        const workbook = XLSX.read(fileContent, { type: 'array', cellDates: true, dense: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' }) as (string | number)[][];
@@ -196,34 +260,32 @@ export const useExcelMatcher = () => {
           return rowObject;
         });
 
-        const processedData = { headers, rows };
-        
         if (fileType === 'primary') {
-          setPrimaryData(processedData);
-          setPrimaryFileName(file.name);
-          resetPrimaryDataStates(processedData);
-          setAppState('loaded');
+            await set('primary_rows', rows);
+            await set('primary_headers', headers);
+            await set('primary_fileName', file.name);
+            setPrimaryDataHeaders(headers);
+            setPrimaryFileName(file.name);
+            resetPrimaryDataStates(headers);
         } else {
-          setSecondaryData(processedData);
-          setSecondaryFileName(file.name);
-          setSecondaryLinkColumn('');
+            await set('secondary_rows', rows);
+            await set('secondary_headers', headers);
+            await set('secondary_fileName', file.name);
+            setSecondaryDataHeaders(headers);
+            setSecondaryFileName(file.name);
+            setSecondaryLinkColumn('');
         }
         
-      } catch (error) {
+        setAppState('loaded');
+        toast({ title: 'File Berhasil Diproses', description: `${file.name} (${rows.length} baris) telah disimpan di browser Anda.` });
+
+    } catch (error) {
         console.error("Kesalahan memproses file Excel:", error);
-        toast({ variant: "destructive", title: "Kesalahan Membaca File", description: "Terjadi masalah saat memproses file Excel Anda." });
-      } finally {
+        toast({ variant: "destructive", title: "Kesalahan Membaca File", description: `Terjadi masalah saat memproses ${file.name}.` });
+    } finally {
         setIsLoadingFile(false);
         if(event.target) event.target.value = "";
-      }
-    };
-    
-    reader.onerror = () => {
-        setIsLoadingFile(false);
-        toast({ variant: "destructive", title: "Kesalahan Membaca File", description: "Tidak dapat membaca file yang dipilih." });
-    };
-
-    reader.readAsArrayBuffer(file);
+    }
   };
 
   const handleUploadClick = (fileType: 'primary' | 'secondary') => {
@@ -231,14 +293,28 @@ export const useExcelMatcher = () => {
     else secondaryFileInputRef.current?.click();
   };
 
-  const handleReset = () => {
-    setAppState('initial');
-    setPrimaryData(null);
-    setPrimaryFileName('');
-    setSecondaryData(null);
-    setSecondaryFileName('');
-    resetPrimaryDataStates(null);
-    setSecondaryLinkColumn('');
+  const handleReset = async () => {
+    try {
+      await clear();
+      localStorage.removeItem('rekonMatch_displayColumns');
+      localStorage.removeItem('rekonMatch_searchColumns');
+      localStorage.removeItem('rekonMatch_columnTypes');
+      localStorage.removeItem('rekonMatch_columnColors');
+      localStorage.removeItem('rekonMatch_primaryTemplates');
+      localStorage.removeItem('rekonMatch_secondaryTemplates');
+
+      setAppState('initial');
+      setPrimaryDataHeaders([]);
+      setPrimaryFileName('');
+      setSecondaryDataHeaders([]);
+      setSecondaryFileName('');
+      resetPrimaryDataStates(null);
+      setSecondaryLinkColumn('');
+      toast({ title: 'Reset Berhasil', description: 'Semua data dan pengaturan lokal telah dihapus.' });
+    } catch (error) {
+      console.error("Gagal mereset IndexedDB:", error);
+      toast({ variant: "destructive", title: "Gagal Mereset", description: "Tidak dapat menghapus data lokal." });
+    }
   };
 
   const handleSearchColumnToggle = (column: string, checked: boolean) => {
@@ -252,6 +328,7 @@ export const useExcelMatcher = () => {
         const { [column]: _, ...rest } = searchCriteria;
         setSearchCriteria(rest);
       }
+      localStorage.setItem('rekonMatch_searchColumns', JSON.stringify(Array.from(newSet)));
       return newSet;
     });
   };
@@ -266,22 +343,34 @@ export const useExcelMatcher = () => {
 
   const handleDisplayColumnToggle = (column: string, checked: boolean) => {
     setDisplayColumns(prev => {
-      if (checked) return [...prev, column];
-      const newCols = prev.filter(c => c !== column);
-      const { [column]: cType, ...restTypes } = columnTypes;
-      setColumnTypes(restTypes);
-      const { [column]: cColor, ...restColors } = columnColors;
-      setColumnColors(restColors);
+      let newCols;
+      if (checked) {
+        newCols = [...prev, column];
+      } else {
+        newCols = prev.filter(c => c !== column);
+        const { [column]: cType, ...restTypes } = columnTypes;
+        setColumnTypes(restTypes);
+        localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(restTypes));
+        const { [column]: cColor, ...restColors } = columnColors;
+        setColumnColors(restColors);
+        localStorage.setItem('rekonMatch_columnColors', JSON.stringify(restColors));
+      }
+      localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(newCols));
       return newCols;
     });
   };
   
   const handleSelectAllDisplayColumns = (checked: boolean) => {
-    if (checked && primaryData) setDisplayColumns(primaryData.headers);
-    else {
+    if (checked && primaryDataHeaders) {
+      setDisplayColumns(primaryDataHeaders);
+      localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(primaryDataHeaders));
+    } else {
       setDisplayColumns([]);
+      localStorage.setItem('rekonMatch_displayColumns', JSON.stringify([]));
       setColumnTypes({});
+      localStorage.removeItem('rekonMatch_columnTypes');
       setColumnColors({});
+      localStorage.removeItem('rekonMatch_columnColors');
     }
   };
   
@@ -291,98 +380,122 @@ export const useExcelMatcher = () => {
     if (newIndex < 0 || newIndex >= newDisplayColumns.length) return;
     [newDisplayColumns[index], newDisplayColumns[newIndex]] = [newDisplayColumns[newIndex], newDisplayColumns[index]];
     setDisplayColumns(newDisplayColumns);
+    localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(newDisplayColumns));
   };
 
-  const handleColumnTypeChange = (column: string, type: ColumnType) => setColumnTypes(prev => ({...prev, [column]: type}));
-  const handleColumnColorChange = (column: string, color: string) => setColumnColors(prev => ({...prev, [column]: color}));
+  const handleColumnTypeChange = (column: string, type: ColumnType) => {
+      const newTypes = {...columnTypes, [column]: type};
+      setColumnTypes(newTypes);
+      localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(newTypes));
+  };
 
-  const handleRunQuery = useCallback(() => {
-    if (!primaryData || isQueryInvalid) return;
+  const handleColumnColorChange = (column: string, color: string) => {
+    const newColors = {...columnColors, [column]: color};
+    setColumnColors(newColors);
+    localStorage.setItem('rekonMatch_columnColors', JSON.stringify(newColors));
+  };
+
+  const handleRunQuery = useCallback(async () => {
+    if (isQueryInvalid) return;
     setIsProcessing(true);
     
-    setTimeout(() => {
-      const activeSearchCriteria = Object.fromEntries(
-        Object.entries(searchCriteria).filter(([col, crit]) => searchColumns.has(col) && crit?.value)
-      );
+    try {
+        const primaryDataRows = await get<Row[]>('primary_rows');
+        if (!primaryDataRows) {
+            toast({ variant: "destructive", title: "Data Utama Tidak Ditemukan" });
+            setIsProcessing(false);
+            return;
+        }
 
-      const parsedCriteria = Object.entries(activeSearchCriteria).reduce((acc, [col, crit]) => {
-        acc[col] = crit.value.split(/,|\n/);
-        return acc;
-      }, {} as Record<string, string[]>);
+        const activeSearchCriteria = Object.fromEntries(
+            Object.entries(searchCriteria).filter(([col, crit]) => searchColumns.has(col) && crit?.value)
+        );
 
-      const longestInputLength = Math.max(0, ...Object.values(parsedCriteria).map(terms => terms.length));
-      
-      const finalResults: Row[] = [];
-      const usedDataIndicesCount = new Map<number, number>();
-
-      for (let i = 0; i < longestInputLength; i++) {
-        const termRow: Record<string, string> = {};
-        let hasValueThisRow = false;
-
-        Object.keys(activeSearchCriteria).forEach(col => {
-            const terms = parsedCriteria[col] || [];
-            const term = terms.length > i ? terms[i] : terms[terms.length - 1] || '';
-             if (term.trim() !== '') {
-                termRow[col] = term.trim();
-                if(terms.length > i) hasValueThisRow = true;
+        const parsedCriteria: Record<string, string[]> = {};
+        let longestInputLength = 0;
+        Object.entries(activeSearchCriteria).forEach(([col, crit]) => {
+            const terms = crit.value.split(/,|\n/);
+            parsedCriteria[col] = terms;
+            if (terms.length > longestInputLength) {
+                longestInputLength = terms.length;
             }
         });
         
-        if (!hasValueThisRow) {
-             if (includeEmptyRowsInResults) {
-                finalResults.push({});
-            }
-            continue;
-        }
+        const finalResults: Row[] = [];
+        const usedDataIndicesCount = new Map<number, number>();
 
-        const checkMatch = (value: string, operator: SearchOperator, term: string): boolean => {
-            const val = String(value ?? '').toLowerCase();
-            const t = String(term ?? '').toLowerCase();
-            if (!t) return false;
-            switch (operator) {
-            case 'contains': return val.includes(t);
-            case 'equals': return val === t;
-            case 'startsWith': return val.startsWith(t);
-            case 'endsWith': return val.endsWith(t);
-            default: return false;
-            }
-        };
+        for (let i = 0; i < longestInputLength; i++) {
+            const termRow: Record<string, string> = {};
+            let isRowEmpty = true;
 
-        const foundMatches = primaryData.rows
-          .map((row, index) => ({ row, originalIndex: index }))
-          .filter(({ row }) => {
-            return Object.entries(termRow).every(([col, term]) => {
-                const cellValue = String(row[col] ?? '');
-                const { operator } = activeSearchCriteria[col];
-                return checkMatch(cellValue, operator, term);
-            });
-        });
-
-        if (foundMatches.length > 0) {
-            foundMatches.forEach(({ row, originalIndex }) => {
-                const currentCount = usedDataIndicesCount.get(originalIndex) || 0;
-                if (currentCount > 0) {
-                    const duplicateRow: Row = { __isNotFound: true };
-                     Object.keys(termRow).forEach(col => {
-                        duplicateRow[col] = `Data duplikasi, ${currentCount} Data sudah ada`;
-                    });
-                    finalResults.push(duplicateRow);
-                } else {
-                    finalResults.push(row);
+            Object.keys(activeSearchCriteria).forEach(col => {
+                const terms = parsedCriteria[col] || [];
+                const term = terms.length > i ? terms[i] : (terms.length > 0 ? terms[terms.length - 1] : '');
+                if (term.trim()) {
+                    isRowEmpty = false;
                 }
-                usedDataIndicesCount.set(originalIndex, currentCount + 1);
+                termRow[col] = term.trim();
             });
-        } else {
-            const notFoundRow: Row = { __isNotFound: true };
-            Object.assign(notFoundRow, termRow);
-            finalResults.push(notFoundRow);
+
+            if (isRowEmpty) {
+                if (includeEmptyRowsInResults) {
+                    finalResults.push({});
+                }
+                continue;
+            }
+
+            const checkMatch = (value: string | number, operator: SearchOperator, term: string): boolean => {
+                const val = String(value ?? '').toLowerCase();
+                const t = String(term ?? '').toLowerCase();
+                if (!t) return true; // if term is empty, it's a match for that column.
+                switch (operator) {
+                    case 'contains': return val.includes(t);
+                    case 'equals': return val === t;
+                    case 'startsWith': return val.startsWith(t);
+                    case 'endsWith': return val.endsWith(t);
+                    default: return false;
+                }
+            };
+            
+            const foundMatches = primaryDataRows
+                .map((row, index) => ({ row, originalIndex: index }))
+                .filter(({ row }) => {
+                    return Object.entries(termRow).every(([col, term]) => {
+                        const cellValue = row[col];
+                        const { operator } = activeSearchCriteria[col];
+                        return checkMatch(cellValue, operator, term);
+                    });
+                });
+            
+            if (foundMatches.length > 0) {
+                foundMatches.forEach(({ row, originalIndex }) => {
+                    const currentCount = usedDataIndicesCount.get(originalIndex) || 0;
+                    if (currentCount > 0) {
+                        const duplicateRow: Row = { __isNotFound: true };
+                        Object.keys(termRow).forEach(col => {
+                           duplicateRow[col] = `Data duplikasi, ${currentCount} Data sudah ada`;
+                        });
+                        finalResults.push(duplicateRow);
+                    } else {
+                        finalResults.push(row);
+                    }
+                    usedDataIndicesCount.set(originalIndex, currentCount + 1);
+                });
+            } else {
+                const notFoundRow: Row = { __isNotFound: true };
+                Object.assign(notFoundRow, termRow);
+                finalResults.push(notFoundRow);
+            }
         }
-      }
       
       setFilteredResults(finalResults);
+    } catch(e) {
+      console.error("Gagal menjalankan kueri:", e);
+      toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: "Tidak dapat mengambil data dari penyimpanan lokal." });
+    } finally {
       setIsProcessing(false);
-    }, 500);
-  }, [primaryData, searchCriteria, searchColumns, isQueryInvalid, includeEmptyRowsInResults]);
+    }
+  }, [searchCriteria, searchColumns, isQueryInvalid, includeEmptyRowsInResults, toast]);
 
   const { formatCell } = require('@/app/page');
   
@@ -400,7 +513,9 @@ export const useExcelMatcher = () => {
       columns.map(col => {
         const cellValue = row[col];
         const colType = row.__isNotFound ? 'text' : colTypes[col] || 'text';
-        return formatCell(cellValue, colType);
+        const formatted = formatCell(cellValue, colType);
+        // Replace newlines and tabs to avoid breaking table structure in clipboard
+        return String(formatted).replace(/\n/g, ' ').replace(/\t/g, ' ');
       }).join('\t')
     );
     
@@ -413,29 +528,43 @@ export const useExcelMatcher = () => {
     });
   }, [toast, formatCell]);
 
-  const handleRowClick = (row: Row) => {
-    if (row.__isNotFound || !primaryLinkColumn || !secondaryLinkColumn || !secondaryData) {
+  const handleRowClick = async (row: Row) => {
+    if (row.__isNotFound || !primaryLinkColumn || !secondaryLinkColumn) {
       return;
     }
-    const lookupValue = row[primaryLinkColumn];
-    if (lookupValue === undefined) return;
     
-    setSelectedPrimaryRow(row);
-    setCurrentLookupValue(lookupValue);
+    try {
+      const secondaryDataRows = await get<Row[]>('secondary_rows');
+      if (!secondaryDataRows) {
+        toast({ variant: "destructive", title: "Data Sekunder Tidak Ditemukan" });
+        return;
+      }
 
-    const relatedRows = secondaryData.rows.filter(secondaryRow => 
-      String(secondaryRow[secondaryLinkColumn] ?? '').toLowerCase() === String(lookupValue).toLowerCase()
-    );
+      const lookupValue = row[primaryLinkColumn];
+      if (lookupValue === undefined || lookupValue === null) return;
+      
+      setSelectedPrimaryRow(row);
+      setCurrentLookupValue(String(lookupValue));
 
-    setSecondaryResults(relatedRows);
-    if (secondaryDisplayTemplates['default']) {
-       setSecondaryDisplayColumns(secondaryDisplayTemplates['default']);
-    } else if (relatedRows.length > 0) {
-      setSecondaryDisplayColumns(secondaryData.headers);
-    } else {
-      setSecondaryDisplayColumns(secondaryData.headers);
+      const relatedRows = secondaryDataRows.filter(secondaryRow => 
+        String(secondaryRow[secondaryLinkColumn] ?? '').toLowerCase() === String(lookupValue).toLowerCase()
+      );
+
+      setSecondaryResults(relatedRows);
+      
+      const savedSecondaryTemplates = localStorage.getItem('rekonMatch_secondaryTemplates');
+      const templates = savedSecondaryTemplates ? JSON.parse(savedSecondaryTemplates) : {};
+      if (templates['default']) {
+        setSecondaryDisplayColumns(templates['default']);
+      } else {
+        setSecondaryDisplayColumns(secondaryDataHeaders);
+      }
+      
+      setIsSecondarySheetOpen(true);
+    } catch(e) {
+      console.error("Gagal mengambil data sekunder:", e);
+      toast({ variant: "destructive", title: "Gagal Membuka Detail", description: "Tidak dapat mengambil data terkait dari penyimpanan lokal." });
     }
-    setIsSecondarySheetOpen(true);
   };
   
   const handleSecondaryDisplayColumnToggle = (column: string, checked: boolean) => {
@@ -443,16 +572,16 @@ export const useExcelMatcher = () => {
   };
 
   const handleSelectAllSecondaryDisplayColumns = (checked: boolean) => {
-    setSecondaryDisplayColumns(checked && secondaryData ? secondaryData.headers : []);
+    setSecondaryDisplayColumns(checked ? secondaryDataHeaders : []);
   };
 
-  const isLinkingEnabled = useMemo(() => !!(primaryData && secondaryData), [primaryData, secondaryData]);
+  const isLinkingEnabled = useMemo(() => primaryDataHeaders.length > 0 && secondaryDataHeaders.length > 0, [primaryDataHeaders, secondaryDataHeaders]);
 
   return {
     appState,
-    primaryData,
+    primaryDataHeaders,
     primaryFileName,
-    secondaryData,
+    secondaryDataHeaders,
     secondaryFileName,
     isLoadingFile,
     primaryFileInputRef,
