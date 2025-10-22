@@ -32,44 +32,51 @@ export default function Home() {
     secondaryLinkColumn,
     setSecondaryLinkColumn,
     searchColumns,
+    secondarySearchColumns,
     displayColumns,
+    secondaryDisplayColumns,
     searchCriteria,
+    secondarySearchCriteria,
     columnTypes,
     columnColors,
     primaryDisplayTemplates,
+    secondaryDisplayTemplates,
     newPrimaryTemplateName,
+    newSecondaryTemplateName,
+    setNewPrimaryTemplateName,
+    setNewSecondaryTemplateName,
     filteredResults,
-    isQueryInvalid,
+    secondaryFilteredResults,
+    isPrimaryQueryInvalid,
+    isSecondaryQueryInvalid,
     isProcessing,
     currentTheme,
     selectedPrimaryRow,
     currentLookupValue,
     isSecondarySheetOpen,
     secondaryResults,
-    secondaryDisplayColumns,
-    secondaryDisplayTemplates,
-    newSecondaryTemplateName,
     includeEmptyRowsInResults,
     setIncludeEmptyRowsInResults,
     handleSearchColumnToggle,
+    handleSecondarySearchColumnToggle,
     handleSelectAllDisplayColumns,
+    handleSelectAllSecondaryDisplayColumns,
     handleDisplayColumnToggle,
+    handleSecondaryDisplayColumnToggle,
     moveDisplayColumn,
+    moveSecondaryDisplayColumn,
     handleColumnTypeChange,
     handleColumnColorChange,
-    setNewPrimaryTemplateName,
     handleSaveTemplate,
     handleLoadTemplate,
     handleDeleteTemplate,
     handleSearchCriteriaChange,
     handleSearchOperatorChange,
-    handleRunQuery,
+    handleRunPrimaryQuery,
+    handleRunSecondaryQuery,
     handleCopyResults,
     handleRowClick,
     setIsSecondarySheetOpen,
-    handleSecondaryDisplayColumnToggle,
-    handleSelectAllSecondaryDisplayColumns,
-    setNewSecondaryTemplateName,
   } = useExcelMatcher();
 
   if (appState === 'initial') {
@@ -134,38 +141,53 @@ export default function Home() {
         <div className="lg:col-span-3">
           <QueryBuilder
             primaryDataHeaders={primaryDataHeaders}
+            secondaryDataHeaders={secondaryDataHeaders}
             searchColumns={searchColumns}
+            secondarySearchColumns={secondarySearchColumns}
             displayColumns={displayColumns}
+            secondaryDisplayColumns={secondaryDisplayColumns}
             columnTypes={columnTypes}
             columnColors={columnColors}
             primaryDisplayTemplates={primaryDisplayTemplates}
+            secondaryDisplayTemplates={secondaryDisplayTemplates}
             newPrimaryTemplateName={newPrimaryTemplateName}
+            newSecondaryTemplateName={newSecondaryTemplateName}
             searchCriteria={searchCriteria}
-            isQueryInvalid={isQueryInvalid}
+            secondarySearchCriteria={secondarySearchCriteria}
+            isPrimaryQueryInvalid={isPrimaryQueryInvalid}
+            isSecondaryQueryInvalid={isSecondaryQueryInvalid}
             isProcessing={isProcessing}
             currentTheme={currentTheme}
             includeEmptyRowsInResults={includeEmptyRowsInResults}
             setIncludeEmptyRowsInResults={setIncludeEmptyRowsInResults}
             handleSearchColumnToggle={handleSearchColumnToggle}
+            handleSecondarySearchColumnToggle={handleSecondarySearchColumnToggle}
             handleSelectAllDisplayColumns={handleSelectAllDisplayColumns}
+            handleSelectAllSecondaryDisplayColumns={handleSelectAllSecondaryDisplayColumns}
             handleDisplayColumnToggle={handleDisplayColumnToggle}
+            handleSecondaryDisplayColumnToggle={handleSecondaryDisplayColumnToggle}
             moveDisplayColumn={moveDisplayColumn}
+            moveSecondaryDisplayColumn={moveSecondaryDisplayColumn}
             handleColumnTypeChange={handleColumnTypeChange}
             handleColumnColorChange={handleColumnColorChange}
             setNewPrimaryTemplateName={setNewPrimaryTemplateName}
+            setNewSecondaryTemplateName={setNewSecondaryTemplateName}
             handleSaveTemplate={handleSaveTemplate}
             handleLoadTemplate={handleLoadTemplate}
             handleDeleteTemplate={handleDeleteTemplate}
             handleSearchCriteriaChange={handleSearchCriteriaChange}
             handleSearchOperatorChange={handleSearchOperatorChange}
-            handleRunQuery={handleRunQuery}
+            handleRunPrimaryQuery={handleRunPrimaryQuery}
+            handleRunSecondaryQuery={handleRunSecondaryQuery}
           />
         </div>
 
         <div className="lg:col-span-3">
           <ResultsDisplay
             filteredResults={filteredResults}
+            secondaryFilteredResults={secondaryFilteredResults}
             displayColumns={displayColumns}
+            secondaryDisplayColumns={secondaryDisplayColumns}
             columnTypes={columnTypes}
             columnColors={columnColors}
             isLinkingEnabled={isLinkingEnabled}
