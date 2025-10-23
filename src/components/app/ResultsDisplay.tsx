@@ -1,10 +1,11 @@
+
 "use client";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Columns, Copy } from "lucide-react";
+import { Columns, Copy, Search } from "lucide-react";
 import { type Row } from "@/lib/mock-data";
 import { type ColumnType } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ interface ResultsDisplayProps {
   isProcessing: boolean;
   handleCopyResults: (dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => void;
   handleRowClick: (row: Row) => void;
+  handleSecondaryRowClick: (row: Row) => void;
   formatCell: (value: any, type?: ColumnType) => string;
 }
 
@@ -38,6 +40,7 @@ export default function ResultsDisplay({
   isProcessing,
   handleCopyResults,
   handleRowClick,
+  handleSecondaryRowClick,
   formatCell
 }: ResultsDisplayProps) {
   return (
@@ -55,8 +58,8 @@ export default function ResultsDisplay({
           <TabsContent value="primary">
             <div className="flex items-center justify-between my-4">
               <p className="text-sm text-muted-foreground">
-                {filteredResults ? `${filteredResults.filter(r => !r.__isNotFound).length} data cocok dari ${filteredResults.length} hasil.` : ''}
-                {isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && ' Klik baris untuk melihat data terkait.'}
+                {filteredResults ? `${filteredResults.filter(r => !r.__isNotFound && !r.__isEmpty).length} data cocok dari ${filteredResults.length} hasil.` : ''}
+                {isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && ' Klik ikon pencarian untuk melihat data terkait.'}
               </p>
               <Button variant="outline" onClick={() => handleCopyResults(filteredResults, displayColumns, columnTypes)} disabled={!filteredResults || filteredResults.length === 0}>
                 <Copy className="w-4 h-4 mr-2" />Salin Hasil Utama
@@ -66,6 +69,7 @@ export default function ResultsDisplay({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12"></TableHead>
                     {displayColumns.map((col, index) => (
                       <TableHead key={`header-${col}-${index}`} className="font-bold bg-muted/50" style={{ backgroundColor: columnColors[col] ? `${columnColors[col]}33` : undefined }}>
                         {col}
@@ -78,12 +82,15 @@ export default function ResultsDisplay({
                     filteredResults.map((row, index) => (
                       <TableRow
                         key={index}
-                        className={cn(
-                          row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30",
-                          !row.__isNotFound && isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && "cursor-pointer"
-                        )}
-                        onClick={() => handleRowClick(row)}
+                        className={cn(row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30")}
                       >
+                        <TableCell>
+                          {!row.__isNotFound && !row.__isEmpty && isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && (
+                            <Button variant="ghost" size="icon" onClick={() => handleRowClick(row)}>
+                              <Search className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </TableCell>
                         {displayColumns.map((col, colIndex) => (
                           <TableCell key={`${index}-${col}-${colIndex}`} style={{ backgroundColor: columnColors[col] ? `${columnColors[col]}33` : undefined }}>
                             {formatCell(row[col], row.__isNotFound ? 'text' : columnTypes[col])}
@@ -93,7 +100,7 @@ export default function ResultsDisplay({
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={displayColumns.length || 1} className="h-48 text-center text-muted-foreground">
+                      <TableCell colSpan={displayColumns.length + 1 || 2} className="h-48 text-center text-muted-foreground">
                         {isProcessing ? 'Memproses...' : (filteredResults === null ? "Jalankan filter untuk melihat data Anda." : "Tidak ada hasil yang ditemukan.")}
                       </TableCell>
                     </TableRow>
@@ -105,7 +112,7 @@ export default function ResultsDisplay({
           <TabsContent value="secondary">
             <div className="flex items-center justify-between my-4">
               <p className="text-sm text-muted-foreground">
-                {secondaryFilteredResults ? `${secondaryFilteredResults.filter(r => !r.__isNotFound).length} data cocok dari ${secondaryFilteredResults.length} hasil.` : ''}
+                {secondaryFilteredResults ? `${secondaryFilteredResults.filter(r => !r.__isNotFound && !r.__isEmpty).length} data cocok dari ${secondaryFilteredResults.length} hasil.` : ''}
               </p>
               <Button variant="outline" onClick={() => handleCopyResults(secondaryFilteredResults, secondaryDisplayColumns, columnTypes)} disabled={!secondaryFilteredResults || secondaryFilteredResults.length === 0}>
                 <Copy className="w-4 h-4 mr-2" />Salin Hasil Sekunder
@@ -115,6 +122,7 @@ export default function ResultsDisplay({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12"></TableHead>
                     {secondaryDisplayColumns.map((col, index) => (
                       <TableHead key={`header-secondary-${col}-${index}`} className="font-bold bg-muted/50" style={{ backgroundColor: columnColors[col] ? `${columnColors[col]}33` : undefined }}>
                         {col}
@@ -129,6 +137,13 @@ export default function ResultsDisplay({
                         key={index}
                         className={cn(row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30")}
                       >
+                        <TableCell>
+                          {!row.__isNotFound && !row.__isEmpty && isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && (
+                            <Button variant="ghost" size="icon" onClick={() => handleSecondaryRowClick(row)}>
+                              <Search className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </TableCell>
                         {secondaryDisplayColumns.map((col, colIndex) => (
                           <TableCell key={`secondary-${index}-${col}-${colIndex}`} style={{ backgroundColor: columnColors[col] ? `${columnColors[col]}33` : undefined }}>
                             {formatCell(row[col], row.__isNotFound ? 'text' : columnTypes[col])}
@@ -138,7 +153,7 @@ export default function ResultsDisplay({
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={secondaryDisplayColumns.length || 1} className="h-48 text-center text-muted-foreground">
+                      <TableCell colSpan={secondaryDisplayColumns.length + 1 || 2} className="h-48 text-center text-muted-foreground">
                         {isProcessing ? 'Memproses...' : (secondaryFilteredResults === null ? "Jalankan filter untuk melihat data Anda." : "Tidak ada hasil yang ditemukan.")}
                       </TableCell>
                     </TableRow>

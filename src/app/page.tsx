@@ -11,6 +11,7 @@ import DataSourceManager from '@/components/app/DataSourceManager';
 import QueryBuilder from '@/components/app/QueryBuilder';
 import ResultsDisplay from '@/components/app/ResultsDisplay';
 import SecondaryDataDialog from '@/components/app/SecondaryDataDialog';
+import PrimaryDataDialog from '@/components/app/PrimaryDataDialog';
 
 export default function Home() {
   const {
@@ -33,7 +34,7 @@ export default function Home() {
     setSecondaryLinkColumn,
     searchColumns,
     secondarySearchColumns,
-    displayColumns,
+    primaryDisplayColumns,
     secondaryDisplayColumns,
     searchCriteria,
     secondarySearchCriteria,
@@ -54,6 +55,8 @@ export default function Home() {
     selectedPrimaryRow,
     currentLookupValue,
     isSecondarySheetOpen,
+    isPrimarySheetOpen,
+    primaryResults,
     secondaryResults,
     includeEmptyRowsInResults,
     setIncludeEmptyRowsInResults,
@@ -76,8 +79,18 @@ export default function Home() {
     handleRunSecondaryQuery,
     handleCopyResults,
     handleRowClick,
+    handleSecondaryRowClick,
     setIsSecondarySheetOpen,
+    setIsPrimarySheetOpen,
   } = useExcelMatcher();
+
+  const handlePrimaryDisplayColumnToggle = (column: string, checked: boolean) => {
+    handleDisplayColumnToggle(column, checked);
+  };
+
+  const handleSelectAllPrimaryDisplayColumns = (checked: boolean) => {
+    handleSelectAllDisplayColumns(checked);
+  }
 
   if (appState === 'initial') {
     return (
@@ -144,7 +157,7 @@ export default function Home() {
             secondaryDataHeaders={secondaryDataHeaders}
             searchColumns={searchColumns}
             secondarySearchColumns={secondarySearchColumns}
-            displayColumns={displayColumns}
+            displayColumns={primaryDisplayColumns}
             secondaryDisplayColumns={secondaryDisplayColumns}
             columnTypes={columnTypes}
             columnColors={columnColors}
@@ -186,7 +199,7 @@ export default function Home() {
           <ResultsDisplay
             filteredResults={filteredResults}
             secondaryFilteredResults={secondaryFilteredResults}
-            displayColumns={displayColumns}
+            displayColumns={primaryDisplayColumns}
             secondaryDisplayColumns={secondaryDisplayColumns}
             columnTypes={columnTypes}
             columnColors={columnColors}
@@ -195,6 +208,7 @@ export default function Home() {
             secondaryLinkColumn={secondaryLinkColumn}
             handleCopyResults={handleCopyResults}
             handleRowClick={handleRowClick}
+            handleSecondaryRowClick={handleSecondaryRowClick}
             isProcessing={isProcessing}
             formatCell={formatCell}
           />
@@ -214,6 +228,26 @@ export default function Home() {
         handleSecondaryDisplayColumnToggle={handleSecondaryDisplayColumnToggle}
         handleSelectAllSecondaryDisplayColumns={handleSelectAllSecondaryDisplayColumns}
         setNewSecondaryTemplateName={setNewSecondaryTemplateName}
+        handleSaveTemplate={handleSaveTemplate}
+        handleLoadTemplate={handleLoadTemplate}
+        handleDeleteTemplate={handleDeleteTemplate}
+        handleCopyResults={handleCopyResults}
+        formatCell={formatCell}
+      />
+
+      <PrimaryDataDialog
+        isOpen={isPrimarySheetOpen}
+        onOpenChange={setIsPrimarySheetOpen}
+        currentLookupValue={currentLookupValue}
+        primaryDataHeaders={primaryDataHeaders}
+        primaryResults={primaryResults}
+        primaryDisplayColumns={primaryDisplayColumns}
+        primaryDisplayTemplates={primaryDisplayTemplates}
+        newPrimaryTemplateName={newPrimaryTemplateName}
+        currentTheme={currentTheme}
+        handlePrimaryDisplayColumnToggle={handlePrimaryDisplayColumnToggle}
+        handleSelectAllPrimaryDisplayColumns={handleSelectAllPrimaryDisplayColumns}
+        setNewPrimaryTemplateName={setNewPrimaryTemplateName}
         handleSaveTemplate={handleSaveTemplate}
         handleLoadTemplate={handleLoadTemplate}
         handleDeleteTemplate={handleDeleteTemplate}

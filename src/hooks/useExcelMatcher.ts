@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
@@ -24,7 +25,7 @@ export const useExcelMatcher = () => {
   const [primaryDataHeaders, setPrimaryDataHeaders] = useState<string[]>([]);
   const [primaryFileName, setPrimaryFileName] = useState<string>('');
   const [searchColumns, setSearchColumns] = useState<Set<string>>(new Set());
-  const [displayColumns, setDisplayColumns] = useState<string[]>([]);
+  const [primaryDisplayColumns, setPrimaryDisplayColumns] = useState<string[]>([]);
   const [searchCriteria, setSearchCriteria] = useState<Record<string, SearchCriterion>>({});
   const [filteredResults, setFilteredResults] = useState<Row[] | null>(null);
   const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
@@ -44,6 +45,8 @@ export const useExcelMatcher = () => {
   
   const [secondaryResults, setSecondaryResults] = useState<Row[]>([]);
   const [isSecondarySheetOpen, setIsSecondarySheetOpen] = useState(false);
+  const [isPrimarySheetOpen, setIsPrimarySheetOpen] = useState(false);
+  const [primaryResults, setPrimaryResults] = useState<Row[]>([]);
   const [currentLookupValue, setCurrentLookupValue] = useState<string | number>('');
   const [selectedPrimaryRow, setSelectedPrimaryRow] = useState<Row | null>(null);
   const [secondaryDisplayTemplates, setSecondaryDisplayTemplates] = useState<Record<string, string[]>>({});
@@ -76,9 +79,9 @@ export const useExcelMatcher = () => {
             setSecondaryFileName(secondaryName || '');
           }
           
-          const savedDisplayCols = localStorage.getItem('rekonMatch_displayColumns');
-          if (savedDisplayCols) setDisplayColumns(JSON.parse(savedDisplayCols));
-          else setDisplayColumns(primaryHeaders);
+          const savedDisplayCols = localStorage.getItem('rekonMatch_primaryDisplayColumns');
+          if (savedDisplayCols) setPrimaryDisplayColumns(JSON.parse(savedDisplayCols));
+          else setPrimaryDisplayColumns(primaryHeaders);
           
           const savedSearchCols = localStorage.getItem('rekonMatch_searchColumns');
           if(savedSearchCols) setSearchColumns(new Set(JSON.parse(savedSearchCols)));
@@ -147,7 +150,7 @@ export const useExcelMatcher = () => {
         toast({ variant: 'destructive', title: 'Nama Template Kosong' });
         return;
       }
-      const updated = { ...primaryDisplayTemplates, [newPrimaryTemplateName]: displayColumns };
+      const updated = { ...primaryDisplayTemplates, [newPrimaryTemplateName]: primaryDisplayColumns };
       setPrimaryDisplayTemplates(updated);
       localStorage.setItem('rekonMatch_primaryTemplates', JSON.stringify(updated));
       setNewPrimaryTemplateName('');
@@ -167,7 +170,7 @@ export const useExcelMatcher = () => {
 
   const handleLoadTemplate = (templateName: string, type: 'primary' | 'secondary') => {
     if (type === 'primary' && primaryDisplayTemplates[templateName]) {
-      setDisplayColumns(primaryDisplayTemplates[templateName]);
+      setPrimaryDisplayColumns(primaryDisplayTemplates[templateName]);
       toast({ title: 'Template Utama Dimuat' });
     } else if (type === 'secondary' && secondaryDisplayTemplates[templateName]) {
       setSecondaryDisplayColumns(secondaryDisplayTemplates[templateName]);
@@ -191,8 +194,8 @@ export const useExcelMatcher = () => {
 
   const resetPrimaryDataStates = (headers: string[] | null) => {
     const newHeaders = headers || [];
-    setDisplayColumns(newHeaders);
-    localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(newHeaders));
+    setPrimaryDisplayColumns(newHeaders);
+    localStorage.setItem('rekonMatch_primaryDisplayColumns', JSON.stringify(newHeaders));
     setSearchColumns(new Set());
     localStorage.removeItem('rekonMatch_searchColumns');
     setSearchCriteria({});
@@ -318,7 +321,7 @@ export const useExcelMatcher = () => {
   const handleReset = async () => {
     try {
       await clear();
-      localStorage.removeItem('rekonMatch_displayColumns');
+      localStorage.removeItem('rekonMatch_primaryDisplayColumns');
       localStorage.removeItem('rekonMatch_searchColumns');
       localStorage.removeItem('rekonMatch_secondarySearchColumns');
       localStorage.removeItem('rekonMatch_columnTypes');
@@ -383,7 +386,7 @@ export const useExcelMatcher = () => {
   };
 
   const handleDisplayColumnToggle = (column: string, checked: boolean) => {
-    setDisplayColumns(prev => {
+    setPrimaryDisplayColumns(prev => {
       let newCols;
       if (checked) {
         newCols = [...prev, column];
@@ -396,18 +399,18 @@ export const useExcelMatcher = () => {
         setColumnColors(restColors);
         localStorage.setItem('rekonMatch_columnColors', JSON.stringify(restColors));
       }
-      localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(newCols));
+      localStorage.setItem('rekonMatch_primaryDisplayColumns', JSON.stringify(newCols));
       return newCols;
     });
   };
   
   const handleSelectAllDisplayColumns = (checked: boolean) => {
     if (checked && primaryDataHeaders) {
-      setDisplayColumns(primaryDataHeaders);
-      localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(primaryDataHeaders));
+      setPrimaryDisplayColumns(primaryDataHeaders);
+      localStorage.setItem('rekonMatch_primaryDisplayColumns', JSON.stringify(primaryDataHeaders));
     } else {
-      setDisplayColumns([]);
-      localStorage.setItem('rekonMatch_displayColumns', JSON.stringify([]));
+      setPrimaryDisplayColumns([]);
+      localStorage.setItem('rekonMatch_primaryDisplayColumns', JSON.stringify([]));
       setColumnTypes({});
       localStorage.removeItem('rekonMatch_columnTypes');
       setColumnColors({});
@@ -416,12 +419,12 @@ export const useExcelMatcher = () => {
   };
   
   const moveDisplayColumn = (index: number, direction: 'up' | 'down') => {
-    const newDisplayColumns = [...displayColumns];
+    const newDisplayColumns = [...primaryDisplayColumns];
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= newDisplayColumns.length) return;
     [newDisplayColumns[index], newDisplayColumns[newIndex]] = [newDisplayColumns[newIndex], newDisplayColumns[index]];
-    setDisplayColumns(newDisplayColumns);
-    localStorage.setItem('rekonMatch_displayColumns', JSON.stringify(newDisplayColumns));
+    setPrimaryDisplayColumns(newDisplayColumns);
+    localStorage.setItem('rekonMatch_primaryDisplayColumns', JSON.stringify(newDisplayColumns));
   };
 
   const handleSecondaryDisplayColumnToggle = (column: string, checked: boolean) => {
@@ -452,6 +455,8 @@ export const useExcelMatcher = () => {
     setColumnColors(newColors);
     localStorage.setItem('rekonMatch_columnColors', JSON.stringify(newColors));
   };
+  
+  const isLinkingEnabled = useMemo(() => primaryDataHeaders.length > 0 && secondaryDataHeaders.length > 0, [primaryDataHeaders, secondaryDataHeaders]);
 
   const handleRunPrimaryQuery = useCallback(async () => {
     if (isPrimaryQueryInvalid) return;
@@ -504,7 +509,7 @@ export const useExcelMatcher = () => {
         for (let i = 0; i < longestInputLength; i++) {
             const termRow: Record<string, string> = {};
             let isRowEmpty = true;
-            Object.keys(activeSearchCriteria).forEach((col, idx) => {
+            Object.keys(activeSearchCriteria).forEach((col) => {
                 const terms = parsedCriteria[col] || [];
                 const term = terms[i] || (terms.length > 0 ? terms[terms.length - 1] : '');
                 if (term.trim()) isRowEmpty = false;
@@ -526,12 +531,10 @@ export const useExcelMatcher = () => {
             });
 
             if (foundMatches.length > 0) {
-                foundMatches.forEach(row => {
-                    finalResults.push(row);
-                });
+                finalResults.push(...foundMatches);
             } else {
                 const notFoundRow: Row = { __isNotFound: true };
-                primaryDataHeaders.forEach(header => {
+                 primaryDataHeaders.forEach(header => {
                     notFoundRow[header] = termRow[header] || 'TIDAK DITEMUKAN';
                 });
                 finalResults.push(notFoundRow);
@@ -620,9 +623,7 @@ export const useExcelMatcher = () => {
             });
 
             if (foundMatches.length > 0) {
-                foundMatches.forEach(row => {
-                    finalResults.push(row);
-                });
+              finalResults.push(...foundMatches);
             } else {
                 const notFoundRow: Row = { __isNotFound: true };
                 secondaryDataHeaders.forEach(header => {
@@ -695,7 +696,7 @@ export const useExcelMatcher = () => {
         );
 
         const activeSecondarySearch = Object.entries(secondarySearchCriteria)
-            .filter(([col, crit]) => secondarySearchColumns.has(col) && crit?.value.trim());
+            .filter(([col, crit]) => crit && secondarySearchColumns.has(col) && crit.value.trim());
 
         if (activeSecondarySearch.length > 0) {
             const checkMatch = (value: string | number, operator: SearchOperator, term: string): boolean => {
@@ -737,7 +738,34 @@ export const useExcelMatcher = () => {
     }
 };
 
-  const isLinkingEnabled = useMemo(() => primaryDataHeaders.length > 0 && secondaryDataHeaders.length > 0, [primaryDataHeaders, secondaryDataHeaders]);
+  const handleSecondaryRowClick = async (row: Row) => {
+    if (row.__isNotFound || !primaryLinkColumn || !secondaryLinkColumn || row.__isEmpty) {
+        return;
+    }
+    
+    try {
+        const primaryDataRows = await get<Row[]>('primary_rows');
+        if (!primaryDataRows) {
+            toast({ variant: "destructive", title: "Data Utama Tidak Ditemukan" });
+            return;
+        }
+
+        const lookupValue = row[secondaryLinkColumn];
+        if (lookupValue === undefined || lookupValue === null) return;
+        
+        setCurrentLookupValue(String(lookupValue));
+
+        const relatedRows = primaryDataRows.filter(primaryRow => 
+            String(primaryRow[primaryLinkColumn] ?? '').toLowerCase() === String(lookupValue).toLowerCase()
+        );
+
+        setPrimaryResults(relatedRows);
+        setIsPrimarySheetOpen(true);
+    } catch(e) {
+        console.error("Gagal mengambil data utama:", e);
+        toast({ variant: "destructive", title: "Gagal Membuka Detail", description: "Tidak dapat mengambil data terkait dari penyimpanan lokal." });
+    }
+  };
 
   return {
     appState,
@@ -759,7 +787,7 @@ export const useExcelMatcher = () => {
     setSecondaryLinkColumn,
     searchColumns,
     secondarySearchColumns,
-    displayColumns,
+    primaryDisplayColumns,
     secondaryDisplayColumns,
     searchCriteria,
     secondarySearchCriteria,
@@ -780,6 +808,8 @@ export const useExcelMatcher = () => {
     selectedPrimaryRow,
     currentLookupValue,
     isSecondarySheetOpen,
+    isPrimarySheetOpen,
+    primaryResults,
     secondaryResults,
     includeEmptyRowsInResults,
     setIncludeEmptyRowsInResults,
@@ -802,6 +832,8 @@ export const useExcelMatcher = () => {
     handleRunSecondaryQuery,
     handleCopyResults,
     handleRowClick,
+    handleSecondaryRowClick,
     setIsSecondarySheetOpen,
+    setIsPrimarySheetOpen,
   };
 };
