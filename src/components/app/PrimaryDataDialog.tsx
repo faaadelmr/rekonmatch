@@ -31,6 +31,7 @@ interface PrimaryDataDialogProps {
   handleDeleteTemplate: (name: string, type: 'primary' | 'secondary') => void;
   handleCopyResults: (dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => void;
   formatCell: (value: any, type?: ColumnType) => string;
+  columnTypes: Record<string, ColumnType>;
 }
 
 export default function PrimaryDataDialog({
@@ -50,7 +51,8 @@ export default function PrimaryDataDialog({
   handleLoadTemplate,
   handleDeleteTemplate,
   handleCopyResults,
-  formatCell
+  formatCell,
+  columnTypes
 }: PrimaryDataDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -155,7 +157,7 @@ export default function PrimaryDataDialog({
                     primaryResults.map((row, index) => (
                       <TableRow key={`p-row-${index}`}>
                         {primaryDisplayColumns.map((col, colIndex) => (
-                          <TableCell key={`p-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col])}</TableCell>
+                          <TableCell key={`p-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col], columnTypes[col])}</TableCell>
                         ))}
                       </TableRow>
                     ))
@@ -169,7 +171,7 @@ export default function PrimaryDataDialog({
         </div>
 
         <DialogFooter className="p-6 pt-4 border-t">
-           <Button variant="outline" onClick={() => handleCopyResults(primaryResults, primaryDisplayColumns, {})} disabled={primaryResults.length === 0}><Copy className="w-4 h-4 mr-2" />Salin Hasil Utama</Button>
+           <Button variant="outline" onClick={() => handleCopyResults(primaryResults, primaryDisplayColumns, columnTypes)} disabled={primaryResults.length === 0}><Copy className="w-4 h-4 mr-2" />Salin Hasil Utama</Button>
            <DialogClose asChild><Button type="button" variant="secondary">Tutup</Button></DialogClose>
         </DialogFooter>
       </DialogContent>

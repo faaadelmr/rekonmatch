@@ -12,6 +12,8 @@ import QueryBuilder from '@/components/app/QueryBuilder';
 import ResultsDisplay from '@/components/app/ResultsDisplay';
 import SecondaryDataDialog from '@/components/app/SecondaryDataDialog';
 import PrimaryDataDialog from '@/components/app/PrimaryDataDialog';
+import ScientificNotationConverterDialog from '@/components/app/ScientificNotationConverterDialog';
+
 
 export default function Home() {
   const {
@@ -82,6 +84,15 @@ export default function Home() {
     handleSecondaryRowClick,
     setIsSecondarySheetOpen,
     setIsPrimarySheetOpen,
+    formatCell,
+    isConvertDialogOpen,
+    setIsConvertDialogOpen,
+    columnsToConvert,
+    fileTypeToConvert,
+    setFileTypeToConvert,
+    handleColumnToConvertToggle,
+    handleConvertScientific,
+    handleConvertAllScientific,
   } = useExcelMatcher();
 
   const handlePrimaryDisplayColumnToggle = (column: string, checked: boolean) => {
@@ -148,6 +159,8 @@ export default function Home() {
             secondaryLinkColumn={secondaryLinkColumn}
             setSecondaryLinkColumn={setSecondaryLinkColumn}
             currentTheme={currentTheme}
+            openConvertDialog={() => setIsConvertDialogOpen(true)}
+            handleConvertAllScientific={handleConvertAllScientific}
           />
         </div>
 
@@ -233,6 +246,7 @@ export default function Home() {
         handleDeleteTemplate={handleDeleteTemplate}
         handleCopyResults={handleCopyResults}
         formatCell={formatCell}
+        columnTypes={columnTypes}
       />
 
       <PrimaryDataDialog
@@ -253,65 +267,21 @@ export default function Home() {
         handleDeleteTemplate={handleDeleteTemplate}
         handleCopyResults={handleCopyResults}
         formatCell={formatCell}
+        columnTypes={columnTypes}
+      />
+
+      <ScientificNotationConverterDialog
+        isOpen={isConvertDialogOpen}
+        onOpenChange={setIsConvertDialogOpen}
+        isProcessing={isProcessing}
+        primaryDataHeaders={primaryDataHeaders}
+        secondaryDataHeaders={secondaryDataHeaders}
+        columnsToConvert={columnsToConvert}
+        fileTypeToConvert={fileTypeToConvert}
+        setFileTypeToConvert={setFileTypeToConvert}
+        handleColumnToConvertToggle={handleColumnToConvertToggle}
+        handleConvertScientific={handleConvertScientific}
       />
     </main>
   );
 }
-
-// Helper function remains here as it's a pure utility
-export const excelSerialDateToJSDate = (serial: number): Date | null => {
-  if (isNaN(serial) || serial < 0) return null;
-  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-  const date = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
-  if (isNaN(date.getTime())) return null;
-  return date;
-};
-
-export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'date' = 'text'): string => {
-  if (value === null || value === undefined || value === '') return '';
-  
-  switch (type) {
-    case 'number':
-      const numValue = Number(String(value).replace(/[^0-9.-]+/g,""));
-      if (isNaN(numValue)) return String(value);
-      return String(numValue);
-    case 'currency':
-      const currencyValue = Number(String(value).replace(/[^0-9.-]+/g,""));
-      if (isNaN(currencyValue)) return String(value);
-      return new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(currencyValue);
-    case 'date':
-      let date: Date | null = null;
-      if (typeof value === 'number') {
-        date = excelSerialDateToJSDate(value);
-      } else if (typeof value === 'string') {
-        const parsedDate = new Date(value);
-        if (!isNaN(parsedDate.getTime())) {
-          date = parsedDate;
-        } else {
-           const serialFromString = Number(value);
-           if(!isNaN(serialFromString)){
-              date = excelSerialDateToJSDate(serialFromString);
-           }
-        }
-      }
-      
-      if (date) {
-        try {
-          const { format: formatDate } = require('date-fns');
-          const { id } = require('date-fns/locale');
-          return formatDate(date, 'd MMMM yyyy', { locale: id });
-        } catch (e) {
-          return "Format Tanggal Salah";
-        }
-      }
-      return "Format Tanggal Salah";
-    case 'text':
-    default:
-      return String(value);
-  }
-};

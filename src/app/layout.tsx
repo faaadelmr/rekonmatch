@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 export const metadata: Metadata = {
   title: 'RekonMatch',
   description: 'Alat cerdas untuk menanyakan dan memfilter data Excel Anda.',
+  icons: [],
 };
 
 export default function RootLayout({

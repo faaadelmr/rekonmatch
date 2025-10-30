@@ -31,6 +31,7 @@ interface SecondaryDataDialogProps {
   handleDeleteTemplate: (name: string, type: 'primary' | 'secondary') => void;
   handleCopyResults: (dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => void;
   formatCell: (value: any, type?: ColumnType) => string;
+  columnTypes: Record<string, ColumnType>;
 }
 
 export default function SecondaryDataDialog({
@@ -50,7 +51,8 @@ export default function SecondaryDataDialog({
   handleLoadTemplate,
   handleDeleteTemplate,
   handleCopyResults,
-  formatCell
+  formatCell,
+  columnTypes
 }: SecondaryDataDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -155,7 +157,7 @@ export default function SecondaryDataDialog({
                     secondaryResults.map((row, index) => (
                       <TableRow key={`s-row-${index}`}>
                         {secondaryDisplayColumns.map((col, colIndex) => (
-                          <TableCell key={`s-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col])}</TableCell>
+                          <TableCell key={`s-cell-${index}-${col}-${colIndex}`}>{formatCell(row[col], columnTypes[col])}</TableCell>
                         ))}
                       </TableRow>
                     ))
@@ -169,7 +171,7 @@ export default function SecondaryDataDialog({
         </div>
 
         <DialogFooter className="p-6 pt-4 border-t">
-           <Button variant="outline" onClick={() => handleCopyResults(secondaryResults, secondaryDisplayColumns, {})} disabled={secondaryResults.length === 0}><Copy className="w-4 h-4 mr-2" />Salin Hasil Sekunder</Button>
+           <Button variant="outline" onClick={() => handleCopyResults(secondaryResults, secondaryDisplayColumns, columnTypes)} disabled={secondaryResults.length === 0}><Copy className="w-4 h-4 mr-2" />Salin Hasil Sekunder</Button>
            <DialogClose asChild><Button type="button" variant="secondary">Tutup</Button></DialogClose>
         </DialogFooter>
       </DialogContent>
