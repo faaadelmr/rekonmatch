@@ -113,7 +113,7 @@ export default function Home() {
               {currentTheme === 'pink' ? <Sparkles className="w-10 h-10" /> : <Sparkles className="w-10 h-10" />}
             </div>
             <CardTitle className="text-4xl font-bold mt-2">RekonMatch</CardTitle>
-            <CardDescription className="text-lg text-muted-foreground pt-2">Unggah file Excel Anda untuk mulai memfilter dan mencocokkan data.</CardDescription>
+            <CardDescription className="text-lg text-muted-foreground pt-2">Ribet pake rumus vlookup, match dan lainnya? unggah file Excel mu disini untuk pencarian yang lebih mudah.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Alert variant="destructive" className="text-left bg-amber-500/10 border-amber-500/30 text-amber-200">
@@ -127,7 +127,7 @@ export default function Home() {
               Pilih File Excel Utama
             </Button>
           </CardContent>
-          <CardFooter><p className="text-xs text-muted-foreground w-full">Mendukung .xlsx, .xls, .csv. Semua pemrosesan dilakukan di browser Anda.</p></CardFooter>
+          <CardFooter><p className="text-xs text-muted-foreground w-full">Mendukung .xlsx, .xls, .csv. Semua pemrosesan dilakukan di browser Anda (tenang,👌amaan..)</p></CardFooter>
         </Card>
       </main>
     );
