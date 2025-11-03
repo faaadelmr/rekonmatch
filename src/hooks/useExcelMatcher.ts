@@ -6,6 +6,28 @@ import { useToast } from '@/hooks/use-toast';
 import { type Row } from "@/lib/mock-data";
 import { set, get, clear } from 'idb-keyval';
 
+export function excelSerialDateToJSDate(serial: number): Date {
+  if (typeof serial !== 'number' || isNaN(serial)) {
+    return new Date(NaN);
+  }
+  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+  const jsDate = new Date(excelEpoch.getTime() + serial * 86400000);
+  // Adjust for timezone offset to get the correct local date
+  const tzOffset = jsDate.getTimezoneOffset() * 60000;
+  return new Date(jsDate.getTime() + tzOffset);
+}
+
+function formatDateMMDDYYYY(date: Date): string {
+    if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+    }
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+}
+
+
 export function scientificToFull(value: any): string | number | bigint {
     let numStr = String(value);
 
@@ -58,13 +80,6 @@ export function scientificToFull(value: any): string | number | bigint {
     return asNumber;
 }
 
-export const excelSerialDateToJSDate = (serial: number): Date | null => {
-  if (isNaN(serial) || serial < 0) return null;
-  const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-  const date = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
-  if (isNaN(date.getTime())) return null;
-  return date;
-};
 
 export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'date' = 'text'): string => {
   if (value === null || value === undefined || value === '') return '';
@@ -73,6 +88,25 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
   }
   
   switch (type) {
+    case 'date':
+      if (typeof value === 'number') {
+        return formatDateMMDDYYYY(excelSerialDateToJSDate(value));
+      }
+      if (typeof value === 'string') {
+        const parsedDate = new Date(value);
+        if (!isNaN(parsedDate.getTime())) {
+          return formatDateMMDDYYYY(parsedDate);
+        }
+      }
+       try {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          return formatDateMMDDYYYY(date);
+        }
+      } catch (e) {
+        // fall through
+      }
+      return String(value);
     case 'number':
       const numValue = Number(String(value).replace(/[^0-9.-]+/g,""));
       if (isNaN(numValue)) return String(value);
@@ -86,32 +120,6 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }).format(currencyValue);
-    case 'date':
-      let date: Date | null = null;
-      if (typeof value === 'number') {
-        date = excelSerialDateToJSDate(value);
-      } else if (typeof value === 'string') {
-        const parsedDate = new Date(value);
-        if (!isNaN(parsedDate.getTime())) {
-          date = parsedDate;
-        } else {
-           const serialFromString = Number(value);
-           if(!isNaN(serialFromString)){
-              date = excelSerialDateToJSDate(serialFromString);
-           }
-        }
-      }
-      
-      if (date) {
-        try {
-          const { format: formatDate } = require('date-fns');
-          const { id } = require('date-fns/locale');
-          return formatDate(date, 'd MMMM yyyy', { locale: id });
-        } catch (e) {
-          return "Format Tanggal Salah";
-        }
-      }
-      return "Format Tanggal Salah";
     case 'text':
     default:
       return String(value);
@@ -124,7 +132,7 @@ export type ExcelData = {
     headers: string[];
     rows: Row[];
 };
-export type ColumnType = 'text' | 'number' | 'currency' | 'date';
+export type ColumnType = 'text' | 'number' | 'currency' | 'date' ;
 export type SearchOperator = 'contains' | 'equals' | 'startsWith' | 'endsWith';
 
 export interface SearchCriterion {
@@ -183,31 +191,39 @@ export const useExcelMatcher = () => {
   const loadFromStorage = useCallback(async () => {
     try {
       const pHeaders = await get<string[]>('primary_headers');
-      if (pHeaders?.length) {
+      if (pHeaders && pHeaders.length > 0) {
         setPrimaryDataHeaders(pHeaders);
         setPrimaryFileName(await get('primary_fileName') || '');
+        
         const sHeaders = await get<string[]>('secondary_headers');
-        if (sHeaders?.length) {
+        if (sHeaders && sHeaders.length > 0) {
           setSecondaryDataHeaders(sHeaders);
           setSecondaryFileName(await get('secondary_fileName') || '');
         }
 
-        const getFromLocalStorage = (key: string, setter: (value: any) => void, isSet = false, defaultVal: any = []) => {
-          const item = localStorage.getItem(key);
-          if (item) {
-            const parsed = JSON.parse(item);
-            setter(isSet ? new Set(parsed) : parsed);
-          } else if(isSet) {
-            setter(new Set(defaultVal));
-          } else {
+        const getFromLocalStorage = (key: string, setter: (value: any) => void, isSet = false, defaultVal: any) => {
+          try {
+            const item = localStorage.getItem(key);
+            if (item) {
+              const parsed = JSON.parse(item);
+              setter(isSet ? new Set(parsed) : parsed);
+            } else {
+              setter(defaultVal);
+            }
+          } catch (e) {
+            console.error(`Gagal memuat ${key} dari localStorage`, e);
             setter(defaultVal);
           }
         };
 
         getFromLocalStorage('rekonMatch_primaryDisplayColumns', setPrimaryDisplayColumns, false, pHeaders);
-        getFromLocalStorage('rekonMatch_secondaryDisplayColumns', setSecondaryDisplayColumns, false, await get<string[]>('secondary_headers') || []);
-        getFromLocalStorage('rekonMatch_searchColumns', setSearchColumns, true);
-        getFromLocalStorage('rekonMatch_secondarySearchColumns', setSecondarySearchColumns, true);
+        getFromLocalStorage('rekonMatch_secondaryDisplayColumns', setSecondaryDisplayColumns, false, sHeaders || []);
+        getFromLocalStorage('rekonMatch_searchColumns', setSearchColumns, true, new Set());
+        getFromLocalStorage('rekonMatch_secondarySearchColumns', setSecondarySearchColumns, true, new Set());
+        getFromLocalStorage('rekonMatch_searchCriteria', setSearchCriteria, false, {});
+        getFromLocalStorage('rekonMatch_secondarySearchCriteria', setSecondarySearchCriteria, false, {});
+        getFromLocalStorage('rekonMatch_primaryLinkColumn', setPrimaryLinkColumn, false, '');
+        getFromLocalStorage('rekonMatch_secondaryLinkColumn', setSecondaryLinkColumn, false, '');
         getFromLocalStorage('rekonMatch_columnTypes', setColumnTypes, false, {});
         getFromLocalStorage('rekonMatch_columnColors', setColumnColors, false, {});
         getFromLocalStorage('rekonMatch_primaryTemplates', setPrimaryDisplayTemplates, false, {});
@@ -243,7 +259,6 @@ export const useExcelMatcher = () => {
     setIsSecondaryQueryInvalid(validateQuery(secondarySearchColumns, secondarySearchCriteria));
   }, [searchColumns, searchCriteria, secondarySearchColumns, secondarySearchCriteria]);
 
-
   const resetDataStates = (type: 'primary' | 'secondary', headers: string[] | null) => {
     const newHeaders = headers || [];
     const stateMapping = {
@@ -270,8 +285,11 @@ export const useExcelMatcher = () => {
     setSearchCols(new Set());
     localStorage.removeItem(`rekonMatch_${type}SearchColumns`);
     setSearchCrit({});
+    localStorage.removeItem(`rekonMatch_${type}SearchCriteria`);
     setFilteredRes(null);
     setLinkCol('');
+    localStorage.removeItem(`rekonMatch_${type}LinkColumn`);
+
     if (type === 'primary') {
       setColumnTypes({});
       localStorage.removeItem('rekonMatch_columnTypes');
@@ -305,8 +323,12 @@ export const useExcelMatcher = () => {
         setSecondaryDataHeaders(pHeaders);
         setSecondaryFileName(pName || '');
 
-        setPrimaryLinkColumn(secondaryLinkColumn);
-        setSecondaryLinkColumn(primaryLinkColumn);
+        const newPrimaryLink = secondaryLinkColumn;
+        const newSecondaryLink = primaryLinkColumn;
+        setPrimaryLinkColumn(newPrimaryLink);
+        setSecondaryLinkColumn(newSecondaryLink);
+        localStorage.setItem('rekonMatch_primaryLinkColumn', JSON.stringify(newPrimaryLink));
+        localStorage.setItem('rekonMatch_secondaryLinkColumn', JSON.stringify(newSecondaryLink));
 
         resetDataStates('primary', sHeaders);
         resetDataStates('secondary', pHeaders);
@@ -328,10 +350,10 @@ export const useExcelMatcher = () => {
         const XLSX = await import('xlsx');
         const fileContent = await file.arrayBuffer();
         
-        const workbook = XLSX.read(fileContent, { type: 'array', cellDates: true, dense: true });
+        const workbook = XLSX.read(fileContent, { type: 'array', cellDates: false, dense: true });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' }) as (string | number | boolean)[][];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, rawNumbers: true, defval: '' }) as (string | number | boolean)[][];
         
         if (!json || json.length < 1 || !json[0] || json[0].length === 0) {
           toast({ variant: "destructive", title: "File Kosong atau Format Salah", description: "Pastikan file Excel Anda tidak kosong dan memiliki header." });
@@ -403,10 +425,10 @@ export const useExcelMatcher = () => {
 
   const handleSearchToggle = (column: string, checked: boolean, type: 'primary' | 'secondary') => {
     const stateMapping = {
-      primary: { setter: setSearchColumns, key: 'rekonMatch_searchColumns', criteriaSetter: setSearchCriteria },
-      secondary: { setter: setSecondarySearchColumns, key: 'rekonMatch_secondarySearchColumns', criteriaSetter: setSecondarySearchCriteria }
+      primary: { setter: setSearchColumns, key: 'rekonMatch_searchColumns', criteriaSetter: setSearchCriteria, criteriaKey: 'rekonMatch_searchCriteria' },
+      secondary: { setter: setSecondarySearchColumns, key: 'rekonMatch_secondarySearchColumns', criteriaSetter: setSecondarySearchCriteria, criteriaKey: 'rekonMatch_secondarySearchCriteria' }
     };
-    const { setter, key, criteriaSetter } = stateMapping[type];
+    const { setter, key, criteriaSetter, criteriaKey } = stateMapping[type];
 
     setter(prev => {
       const newSet = new Set(prev);
@@ -417,6 +439,7 @@ export const useExcelMatcher = () => {
         newSet.delete(column);
         criteriaSetter(current => {
           const { [column]: _, ...rest } = current;
+          localStorage.setItem(criteriaKey, JSON.stringify(rest));
           return rest;
         });
       }
@@ -430,12 +453,22 @@ export const useExcelMatcher = () => {
 
   const handleSearchCriteriaChange = (column: string, value: string, isSecondary: boolean) => {
     const setter = isSecondary ? setSecondarySearchCriteria : setSearchCriteria;
-    setter(prev => ({ ...prev, [column]: { ...prev[column], value } }));
+    const key = isSecondary ? 'rekonMatch_secondarySearchCriteria' : 'rekonMatch_searchCriteria';
+    setter(prev => {
+      const newCriteria = { ...prev, [column]: { ...(prev[column] || { operator: 'contains' }), value } };
+      localStorage.setItem(key, JSON.stringify(newCriteria));
+      return newCriteria;
+    });
   };
 
   const handleSearchOperatorChange = (column: string, operator: SearchOperator, isSecondary: boolean) => {
     const setter = isSecondary ? setSecondarySearchCriteria : setSearchCriteria;
-    setter(prev => ({ ...prev, [column]: { ...prev[column], operator } }));
+    const key = isSecondary ? 'rekonMatch_secondarySearchCriteria' : 'rekonMatch_searchCriteria';
+    setter(prev => {
+      const newCriteria = { ...prev, [column]: { ...(prev[column] || { value: '' }), operator } };
+      localStorage.setItem(key, JSON.stringify(newCriteria));
+      return newCriteria;
+    });
   };
 
   const handleDisplayColumnToggle = (column: string, checked: boolean, type: 'primary' | 'secondary' = 'primary') => {
@@ -538,7 +571,7 @@ export const useExcelMatcher = () => {
     }
   };
 
-  const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
+ const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
     const isPrimary = type === 'primary';
     const criteria = isPrimary ? searchCriteria : secondarySearchCriteria;
     const searchCols = isPrimary ? searchColumns : secondarySearchColumns;
@@ -578,15 +611,15 @@ export const useExcelMatcher = () => {
                 default: return false;
             }
         };
-
-        const parsedCriteriaByRow: Record<string, string>[] = [];
+        
         const criteriaValuesByCol = Object.entries(activeCriteria).reduce((acc, [col, crit]) => {
             acc[col] = crit.value.split(/\r\n|\n|\r/).map(t => t.trim());
             return acc;
         }, {} as Record<string, string[]>);
-
+        
         const maxLen = Math.max(0, ...Object.values(criteriaValuesByCol).map(v => v.length));
         
+        const parsedCriteriaByRow: Record<string, string>[] = [];
         for (let i = 0; i < maxLen; i++) {
             const rowCriteria: Record<string, string> = {};
             for (const col of Object.keys(activeCriteria)) {
@@ -594,29 +627,17 @@ export const useExcelMatcher = () => {
             }
             parsedCriteriaByRow.push(rowCriteria);
         }
-        
+
         const finalResults: Row[] = [];
         const foundRowsTracker = new Set<string>();
-        const processedTerms = new Set<string>();
 
         for (const termRow of parsedCriteriaByRow) {
             const isRowEffectivelyEmpty = Object.values(termRow).every(term => term === '' || term === undefined);
 
             if (isRowEffectivelyEmpty) {
                 if (includeEmptyRowsInResults) {
-                    finalResults.push({ __isEmpty: true });
+                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
                 }
-                continue;
-            }
-
-            const termKey = JSON.stringify(Object.entries(termRow).sort(([a], [b]) => a.localeCompare(b)));
-
-            if (processedTerms.has(termKey)) {
-                const duplicateRow: Row = { __isDuplicate: true };
-                 headers.forEach(header => {
-                    duplicateRow[header] = termRow[header] || 'Hasil sudah ditampilkan';
-                });
-                finalResults.push(duplicateRow);
                 continue;
             }
 
@@ -627,17 +648,21 @@ export const useExcelMatcher = () => {
                 })
             );
 
+            let hasAddedNewResult = false;
             if (foundMatches.length > 0) {
-                processedTerms.add(termKey);
                 foundMatches.forEach(match => {
-                    const rowId = JSON.stringify(Object.entries(match).sort(([a], [b]) => a.localeCompare(b)));
-                    if (!foundRowsTracker.has(rowId)) {
-                        finalResults.push(match);
-                        foundRowsTracker.add(rowId);
+                    const uniqueKey = JSON.stringify(match);
+                    if (!foundRowsTracker.has(uniqueKey)) {
+                        foundRowsTracker.add(uniqueKey);
+                        finalResults.push({ ...match, __searchCriteria: termRow });
+                        hasAddedNewResult = true;
                     }
                 });
+                if (!hasAddedNewResult) {
+                    finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
+                }
             } else {
-                const notFoundRow: Row = { __isNotFound: true };
+                 const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
                 headers.forEach(header => {
                     notFoundRow[header] = termRow[header] || '';
                 });
@@ -666,7 +691,10 @@ export const useExcelMatcher = () => {
     const rows = dataToCopy.map(row => 
       columns.map(col => {
         if (row.__isEmpty) return '';
-        if (row.__isDuplicate) return 'Hasil sudah ditampilkan';
+        if (row.__isDuplicate) {
+            // Display the criteria that caused the duplicate flag
+            return `Duplikat untuk: ${JSON.stringify(row.__searchCriteria)}`;
+        }
         const cellValue = row[col];
         const colType = row.__isNotFound ? 'text' : colTypes[col] || 'text';
         let formatted = formatCell(cellValue, colType);
@@ -801,6 +829,15 @@ export const useExcelMatcher = () => {
       return newSet;
     });
   };
+  
+  useEffect(() => {
+    localStorage.setItem('rekonMatch_primaryLinkColumn', JSON.stringify(primaryLinkColumn));
+  }, [primaryLinkColumn]);
+
+  useEffect(() => {
+    localStorage.setItem('rekonMatch_secondaryLinkColumn', JSON.stringify(secondaryLinkColumn));
+  }, [secondaryLinkColumn]);
+
 
   return {
     appState,
