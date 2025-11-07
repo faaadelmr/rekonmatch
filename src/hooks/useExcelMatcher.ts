@@ -697,18 +697,39 @@ export const useExcelMatcher = () => {
         }
         const cellValue = row[col];
         const colType = row.__isNotFound ? 'text' : colTypes[col] || 'text';
-        let formatted = formatCell(cellValue, colType);
         
-        return String(formatted).replace(/\n/g, ' ').replace(/\t/g, ' ');
+        // Use formatted values for dates, raw values for currency
+        let valueToCopy = cellValue;
+        if (colType === 'date') {
+          // For dates, use the formatted version as displayed in UI
+          valueToCopy = formatCell(cellValue, colType);
+        } else if (colType === 'currency') {
+          // For currency, use raw value (not formatted with currency symbols)
+          valueToCopy = cellValue;
+        } else {
+          // For other types, use the formatted version
+          valueToCopy = formatCell(cellValue, colType);
+        }
+        
+        return String(valueToCopy).replace(/\n/g, ' ').replace(/\t/g, ' ');
       }).join('\t')
     );
     
-    navigator.clipboard.writeText([header, ...rows].join('\n')).then(() => {
+    // Try using the Clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText([header, ...rows].join('\n')).then(() => {
+        toast({ title: 'Disalin ke Clipboard', description: `${dataToCopy.length} baris telah disalin.` });
+      }).catch(err => {
+        console.error('Gagal menyalin teks dengan Clipboard API: ', err);
+        // Fallback to alternative method
+        copyToClipboardFallback([header, ...rows].join('\n'));
+        toast({ title: 'Disalin ke Clipboard', description: `${dataToCopy.length} baris telah disalin.` });
+      });
+    } else {
+      // Fallback for non-secure contexts or when Clipboard API is not available
+      copyToClipboardFallback([header, ...rows].join('\n'));
       toast({ title: 'Disalin ke Clipboard', description: `${dataToCopy.length} baris telah disalin.` });
-    }).catch(err => {
-      console.error('Gagal menyalin teks: ', err);
-      toast({ variant: 'destructive', title: 'Gagal Menyalin' });
-    });
+    }
   }, [toast]);
 
   const handleRowClick = async (row: Row, type: 'primary' | 'secondary') => {
@@ -919,4 +940,18 @@ export const useExcelMatcher = () => {
   };
 };
 
+
+// Fallback function for copying to clipboard in non-secure contexts
+const copyToClipboardFallback = (text: string) => {
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-999999px';
+  textArea.style.top = '-999999px';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textArea);
+};
     
