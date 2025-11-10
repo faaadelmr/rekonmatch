@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 import { type Row } from "@/lib/mock-data";
 import { set, get, clear } from 'idb-keyval';
 
+export type { Row };
+
 export function excelSerialDateToJSDate(serial: number): Date {
   if (typeof serial !== 'number' || isNaN(serial)) {
     return new Date(NaN);
@@ -184,6 +186,7 @@ export const useExcelMatcher = () => {
   const [currentTheme, setCurrentTheme] = useState('dark');
   const [includeEmptyRowsInResults, setIncludeEmptyRowsInResults] = useState(true);
 
+  const [selectedPrimaryRow, setSelectedPrimaryRow] = useState<Row | null>(null);
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
   const [columnsToConvert, setColumnsToConvert] = useState<Set<string>>(new Set());
   const [fileTypeToConvert, setFileTypeToConvert] = useState<'primary' | 'secondary'>('primary');
@@ -364,7 +367,13 @@ export const useExcelMatcher = () => {
         const rows: Row[] = json.slice(1).map(rowArray => {
             const rowObject: Row = {};
             headers.forEach((header, index) => {
-                rowObject[header] = rowArray[index] ?? '';
+                const value = rowArray[index];
+                // Convert boolean values to string representation
+                if (typeof value === 'boolean') {
+                    rowObject[header] = value.toString();
+                } else {
+                    rowObject[header] = value ?? '';
+                }
             });
             return rowObject;
         });
@@ -899,6 +908,8 @@ export const useExcelMatcher = () => {
     isSecondaryQueryInvalid,
     isProcessing,
     currentTheme,
+    selectedPrimaryRow,
+    setSelectedPrimaryRow,
     currentLookupValue,
     isSecondarySheetOpen,
     isPrimarySheetOpen,

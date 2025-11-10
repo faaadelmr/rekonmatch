@@ -25,6 +25,8 @@ interface DataSourceManagerProps {
   secondaryLinkColumn: string;
   setSecondaryLinkColumn: (value: string) => void;
   currentTheme: string;
+  openConvertDialog: () => void;
+  handleConvertAllScientific: () => Promise<void>;
 }
 
 export default function DataSourceManager({
