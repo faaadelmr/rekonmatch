@@ -217,7 +217,7 @@ export default function QueryBuilder({
                         <SelectItem value="endsWith">Diakhiri Dengan</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value, false)} className="min-h-[100px]" />
+                    <Textarea id={`textarea-${col}`} placeholder={`Pisahkan nilai dengan baris baru`} value={searchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value, false)} className="min-h-[100px]" />
                   </div>
                 </div>
               )) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}
@@ -356,7 +356,7 @@ export default function QueryBuilder({
                         <SelectItem value="endsWith">Diakhiri Dengan</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Textarea id={`textarea-${col}`} placeholder={`Nilai dipisah koma (,) atau baris baru`} value={secondarySearchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value, true)} className="min-h-[100px]" />
+                    <Textarea id={`textarea-${col}`} placeholder={`Pisahkan nilai dengan baris baru`} value={secondarySearchCriteria[col]?.value || ''} onChange={e => handleSearchCriteriaChange(col, e.target.value, true)} className="min-h-[100px]" />
                   </div>
                 </div>
               )) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}

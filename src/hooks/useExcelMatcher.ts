@@ -640,29 +640,30 @@ export const useExcelMatcher = () => {
                 }
                 continue;
             }
-
             const foundMatches = dataRows.filter(dataRow => 
                 Object.entries(termRow).every(([col, term]) => {
-                    if (term === '' || term === undefined) return true;
+                    if (term === '' || term === undefined) return true; // ignore empty term for a specific column
                     return checkMatch(dataRow[col], activeCriteria[col].operator, term);
                 })
             );
 
-            let hasAddedNewResult = false;
             if (foundMatches.length > 0) {
-                foundMatches.forEach(match => {
+                const newMatches = foundMatches.filter(match => {
                     const uniqueKey = JSON.stringify(match);
-                    if (!foundRowsTracker.has(uniqueKey)) {
+                    return !foundRowsTracker.has(uniqueKey);
+                });
+
+                if (newMatches.length > 0) {
+                    newMatches.forEach(match => {
+                        const uniqueKey = JSON.stringify(match);
                         foundRowsTracker.add(uniqueKey);
                         finalResults.push({ ...match, __searchCriteria: termRow });
-                        hasAddedNewResult = true;
-                    }
-                });
-                if (!hasAddedNewResult) {
+                    });
+                } else {
                     finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
                 }
             } else {
-                 const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
+                const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
                 headers.forEach(header => {
                     notFoundRow[header] = termRow[header] || '';
                 });
