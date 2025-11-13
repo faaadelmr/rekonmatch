@@ -11,6 +11,8 @@ import { type ColumnType } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
 
 interface ResultsDisplayProps {
+  activeTab: 'primary' | 'secondary';
+  setActiveTab: (tab: 'primary' | 'secondary') => void;
   filteredResults: Row[] | null;
   secondaryFilteredResults: Row[] | null;
   displayColumns: string[];
@@ -25,9 +27,12 @@ interface ResultsDisplayProps {
   handleRowClick: (row: Row) => void;
   handleSecondaryRowClick: (row: Row) => void;
   formatCell: (value: any, type?: ColumnType) => string;
+  secondaryDataHeaders: string[];
 }
 
 export default function ResultsDisplay({
+  activeTab,
+  setActiveTab,
   filteredResults,
   secondaryFilteredResults,
   displayColumns,
@@ -41,7 +46,8 @@ export default function ResultsDisplay({
   handleCopyResults,
   handleRowClick,
   handleSecondaryRowClick,
-  formatCell
+  formatCell,
+  secondaryDataHeaders
 }: ResultsDisplayProps) {
   
   const renderRow = (row: Row, index: number, isSecondary: boolean) => {
@@ -91,12 +97,12 @@ export default function ResultsDisplay({
         <CardDescription>Hasil kueri Anda akan muncul di sini.</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="primary">
+         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'primary' | 'secondary')} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="primary">Hasil Kueri Utama</TabsTrigger>
-            <TabsTrigger value="secondary">Hasil Kueri Sekunder</TabsTrigger>
+            <TabsTrigger value="secondary" disabled={secondaryDataHeaders.length === 0}>Hasil Kueri Sekunder</TabsTrigger>
           </TabsList>
-          <TabsContent value="primary">
+          <TabsContent value="primary" className="mt-4">
             <div className="flex items-center justify-between my-4">
               <p className="text-sm text-muted-foreground">
                 {filteredResults ? `${filteredResults.filter(r => !r.__isNotFound && !r.__isEmpty && !r.__isDuplicate).length} data cocok dari ${filteredResults.length} baris hasil.` : ''}
@@ -124,7 +130,7 @@ export default function ResultsDisplay({
                   ) : (
                     <TableRow>
                       <TableCell colSpan={displayColumns.length + 1 || 2} className="h-48 text-center text-muted-foreground">
-                        {isProcessing ? 'Memproses...' : (filteredResults === null ? "Jalankan filter untuk melihat data Anda." : "Tidak ada hasil yang ditemukan.")}
+                        {isProcessing && activeTab === 'primary' ? 'Memproses...' : (filteredResults === null ? "Jalankan filter untuk melihat data Anda." : "Tidak ada hasil yang ditemukan.")}
                       </TableCell>
                     </TableRow>
                   )}
@@ -132,7 +138,7 @@ export default function ResultsDisplay({
               </Table>
             </div>
           </TabsContent>
-          <TabsContent value="secondary">
+          <TabsContent value="secondary" className="mt-4">
             <div className="flex items-center justify-between my-4">
               <p className="text-sm text-muted-foreground">
                 {secondaryFilteredResults ? `${secondaryFilteredResults.filter(r => !r.__isNotFound && !r.__isEmpty && !r.__isDuplicate).length} data cocok dari ${secondaryFilteredResults.length} baris hasil.` : ''}
@@ -159,7 +165,7 @@ export default function ResultsDisplay({
                   ) : (
                     <TableRow>
                       <TableCell colSpan={secondaryDisplayColumns.length + 1 || 2} className="h-48 text-center text-muted-foreground">
-                        {isProcessing ? 'Memproses...' : (secondaryFilteredResults === null ? "Jalankan filter untuk melihat data Anda." : "Tidak ada hasil yang ditemukan.")}
+                       {isProcessing && activeTab === 'secondary' ? 'Memproses...' : (secondaryFilteredResults === null ? "Jalankan filter untuk melihat data Anda." : "Tidak ada hasil yang ditemukan.")}
                       </TableCell>
                     </TableRow>
                   )}

@@ -688,6 +688,16 @@ export const useExcelMatcher = () => {
     }
   }, [searchCriteria, secondarySearchCriteria, searchColumns, secondarySearchColumns, primaryDataHeaders, secondaryDataHeaders, isPrimaryQueryInvalid, isSecondaryQueryInvalid, includeEmptyRowsInResults, toast]);
 
+  const handleIncludeEmptyRowsToggle = (checked: boolean) => {
+    setIncludeEmptyRowsInResults(checked);
+    if (!isPrimaryQueryInvalid) {
+      runQuery('primary');
+    }
+    if (!isSecondaryQueryInvalid) {
+      runQuery('secondary');
+    }
+  };
+
   const handleRunPrimaryQuery = () => runQuery('primary');
   const handleRunSecondaryQuery = () => runQuery('secondary');
   
@@ -916,7 +926,7 @@ export const useExcelMatcher = () => {
     primaryResults,
     secondaryResults,
     includeEmptyRowsInResults,
-    setIncludeEmptyRowsInResults,
+    handleIncludeEmptyRowsToggle,
     handleSearchColumnToggle,
     handleSecondarySearchColumnToggle,
     handleSelectAllDisplayColumns: (checked: boolean) => handleSelectAllDisplayColumns(checked, 'primary'),
@@ -966,4 +976,3 @@ const copyToClipboardFallback = (text: string) => {
   document.execCommand('copy');
   document.body.removeChild(textArea);
 };
-    

@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState } from 'react';
 import { useExcelMatcher, type Row } from '@/hooks/useExcelMatcher';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,7 @@ export default function Home() {
     primaryResults,
     secondaryResults,
     includeEmptyRowsInResults,
-    setIncludeEmptyRowsInResults,
+    handleIncludeEmptyRowsToggle,
     handleSearchColumnToggle,
     handleSecondarySearchColumnToggle,
     handleSelectAllDisplayColumns,
@@ -94,6 +95,8 @@ export default function Home() {
     handleConvertScientific,
     handleConvertAllScientific,
   } = useExcelMatcher();
+
+  const [activeTab, setActiveTab] = useState<'primary' | 'secondary'>('primary');
 
   const handlePrimaryDisplayColumnToggle = (column: string, checked: boolean) => {
     handleDisplayColumnToggle(column, checked);
@@ -166,6 +169,8 @@ export default function Home() {
 
         <div className="lg:col-span-3">
           <QueryBuilder
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
             primaryDataHeaders={primaryDataHeaders}
             secondaryDataHeaders={secondaryDataHeaders}
             searchColumns={searchColumns}
@@ -185,7 +190,7 @@ export default function Home() {
             isProcessing={isProcessing}
             currentTheme={currentTheme}
             includeEmptyRowsInResults={includeEmptyRowsInResults}
-            setIncludeEmptyRowsInResults={setIncludeEmptyRowsInResults}
+            handleIncludeEmptyRowsToggle={handleIncludeEmptyRowsToggle}
             handleSearchColumnToggle={handleSearchColumnToggle}
             handleSecondarySearchColumnToggle={handleSecondarySearchColumnToggle}
             handleSelectAllDisplayColumns={handleSelectAllDisplayColumns}
@@ -210,6 +215,8 @@ export default function Home() {
 
         <div className="lg:col-span-3">
           <ResultsDisplay
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
             filteredResults={filteredResults}
             secondaryFilteredResults={secondaryFilteredResults}
             displayColumns={primaryDisplayColumns}
@@ -224,6 +231,7 @@ export default function Home() {
             handleSecondaryRowClick={handleSecondaryRowClick}
             isProcessing={isProcessing}
             formatCell={formatCell}
+            secondaryDataHeaders={secondaryDataHeaders}
           />
         </div>
       </div>
