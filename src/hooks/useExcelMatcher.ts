@@ -182,8 +182,6 @@ export const useExcelMatcher = () => {
   const [secondaryDisplayTemplates, setSecondaryDisplayTemplates] = useState<Record<string, DisplayTemplate>>({});
   const [newSecondaryTemplateName, setNewSecondaryTemplateName] = useState('');
   
-  const [isPrimaryQueryInvalid, setIsPrimaryQueryInvalid] = useState(true);
-  const [isSecondaryQueryInvalid, setIsSecondaryQueryInvalid] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingFile, setIsLoadingFile] = useState<'primary' | 'secondary' | false>(false);
   const primaryFileInputRef = useRef<HTMLInputElement>(null);
@@ -197,6 +195,8 @@ export const useExcelMatcher = () => {
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
   const [columnsToConvert, setColumnsToConvert] = useState<Set<string>>(new Set());
   const [fileTypeToConvert, setFileTypeToConvert] = useState<'primary' | 'secondary'>('primary');
+  
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadFromStorage = useCallback(async () => {
     try {
@@ -257,17 +257,128 @@ export const useExcelMatcher = () => {
     return () => window.removeEventListener('themeChanged', updateTheme);
   }, []);
 
+  const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
+    const isPrimary = type === 'primary';
+    const criteria = isPrimary ? searchCriteria : secondarySearchCriteria;
+    const searchCols = isPrimary ? searchColumns : secondarySearchColumns;
+    const headers = isPrimary ? primaryDataHeaders : secondaryDataHeaders;
+    const setResults = isPrimary ? setFilteredResults : setSecondaryFilteredResults;
+
+    const activeCriteria = Object.fromEntries(
+        Object.entries(criteria).filter(([col, crit]) => searchCols.has(col) && crit?.value.trim())
+    );
+    const isQueryInvalid = searchCols.size === 0 || Object.keys(activeCriteria).length === 0;
+
+    if (isQueryInvalid) {
+        setResults([]);
+        return;
+    }
+    
+    setIsProcessing(true);
+
+    try {
+        const dataRows = await get<Row[]>(`${type}_rows`);
+        if (!dataRows) {
+            toast({ variant: "destructive", title: `Data ${isPrimary ? 'Utama' : 'Sekunder'} Tidak Ditemukan` });
+            return;
+        }
+
+        const checkMatch = (value: any, operator: SearchOperator, term: string): boolean => {
+            const val = String(value ?? '').toLowerCase();
+            const t = term.toLowerCase();
+            if (t === '') return false;
+            switch (operator) {
+                case 'contains': return val.includes(t);
+                case 'equals': return val === t;
+                case 'startsWith': return val.startsWith(t);
+                case 'endsWith': return val.endsWith(t);
+                default: return false;
+            }
+        };
+        
+        const criteriaValuesByCol = Object.entries(activeCriteria).reduce((acc, [col, crit]) => {
+            acc[col] = crit.value.split(/\r\n|\n|\r/).map(t => t.trim());
+            return acc;
+        }, {} as Record<string, string[]>);
+        
+        const maxLen = Math.max(0, ...Object.values(criteriaValuesByCol).map(v => v.length));
+        
+        const parsedCriteriaByRow: Record<string, string>[] = [];
+        for (let i = 0; i < maxLen; i++) {
+            const rowCriteria: Record<string, string> = {};
+            for (const col of Object.keys(activeCriteria)) {
+                rowCriteria[col] = criteriaValuesByCol[col]?.[i];
+            }
+            parsedCriteriaByRow.push(rowCriteria);
+        }
+
+        const finalResults: Row[] = [];
+        const foundRowsTracker = new Set<string>();
+
+        for (const termRow of parsedCriteriaByRow) {
+            const isRowEffectivelyEmpty = Object.values(termRow).every(term => term === '' || term === undefined);
+
+            if (isRowEffectivelyEmpty) {
+                if (includeEmptyRowsInResults) {
+                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
+                }
+                continue;
+            }
+            const foundMatches = dataRows.filter(dataRow => 
+                Object.entries(termRow).every(([col, term]) => {
+                    if (term === '' || term === undefined) return true; // ignore empty term for a specific column
+                    return checkMatch(dataRow[col], activeCriteria[col].operator, term);
+                })
+            );
+
+            if (foundMatches.length > 0) {
+                const newMatches = foundMatches.filter(match => {
+                    const uniqueKey = JSON.stringify(match);
+                    return !foundRowsTracker.has(uniqueKey);
+                });
+
+                if (newMatches.length > 0) {
+                    newMatches.forEach(match => {
+                        const uniqueKey = JSON.stringify(match);
+                        foundRowsTracker.add(uniqueKey);
+                        finalResults.push({ ...match, __searchCriteria: termRow });
+                    });
+                } else {
+                    finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
+                }
+            } else {
+                const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
+                headers.forEach(header => {
+                    notFoundRow[header] = termRow[header] || '';
+                });
+                finalResults.push(notFoundRow);
+            }
+        }
+        setResults(finalResults);
+    } catch(e) {
+        console.error(`Gagal menjalankan kueri ${type}:`, e);
+        toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: "Tidak dapat mengambil data dari penyimpanan lokal." });
+    } finally {
+        setIsProcessing(false);
+    }
+  }, [searchCriteria, secondarySearchCriteria, searchColumns, secondarySearchColumns, primaryDataHeaders, secondaryDataHeaders, includeEmptyRowsInResults, toast]);
+
+
   useEffect(() => {
-    const validateQuery = (cols: Set<string>, criteria: Record<string, SearchCriterion>) => {
-      if (cols.size === 0) return true;
-      const activeCriteria = Object.fromEntries(
-        Object.entries(criteria).filter(([col, crit]) => cols.has(col) && crit?.value.trim())
-      );
-      return Object.keys(activeCriteria).length === 0;
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      runQuery('primary');
+      runQuery('secondary');
+    }, 500);
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
     };
-    setIsPrimaryQueryInvalid(validateQuery(searchColumns, searchCriteria));
-    setIsSecondaryQueryInvalid(validateQuery(secondarySearchColumns, secondarySearchCriteria));
-  }, [searchColumns, searchCriteria, secondarySearchColumns, secondarySearchCriteria]);
+  }, [searchCriteria, secondarySearchCriteria, includeEmptyRowsInResults, runQuery]);
+
 
   const resetDataStates = (type: 'primary' | 'secondary', headers: string[] | null) => {
     const newHeaders = headers || [];
@@ -602,126 +713,9 @@ export const useExcelMatcher = () => {
       }
   };
 
- const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
-    const isPrimary = type === 'primary';
-    const criteria = isPrimary ? searchCriteria : secondarySearchCriteria;
-    const searchCols = isPrimary ? searchColumns : secondarySearchColumns;
-    const headers = isPrimary ? primaryDataHeaders : secondaryDataHeaders;
-    const isInvalid = isPrimary ? isPrimaryQueryInvalid : isSecondaryQueryInvalid;
-    const setResults = isPrimary ? setFilteredResults : setSecondaryFilteredResults;
-
-    if (isInvalid) return;
-    setIsProcessing(true);
-
-    try {
-        const dataRows = await get<Row[]>(`${type}_rows`);
-        if (!dataRows) {
-            toast({ variant: "destructive", title: `Data ${isPrimary ? 'Utama' : 'Sekunder'} Tidak Ditemukan` });
-            return;
-        }
-
-        const activeCriteria = Object.fromEntries(
-            Object.entries(criteria).filter(([col, crit]) => searchCols.has(col) && crit?.value.trim())
-        );
-
-        if (Object.keys(activeCriteria).length === 0) {
-            setResults([]);
-            toast({ variant: "destructive", title: "Kriteria Pencarian Kosong" });
-            return;
-        }
-
-        const checkMatch = (value: any, operator: SearchOperator, term: string): boolean => {
-            const val = String(value ?? '').toLowerCase();
-            const t = term.toLowerCase();
-            if (t === '') return false;
-            switch (operator) {
-                case 'contains': return val.includes(t);
-                case 'equals': return val === t;
-                case 'startsWith': return val.startsWith(t);
-                case 'endsWith': return val.endsWith(t);
-                default: return false;
-            }
-        };
-        
-        const criteriaValuesByCol = Object.entries(activeCriteria).reduce((acc, [col, crit]) => {
-            acc[col] = crit.value.split(/\r\n|\n|\r/).map(t => t.trim());
-            return acc;
-        }, {} as Record<string, string[]>);
-        
-        const maxLen = Math.max(0, ...Object.values(criteriaValuesByCol).map(v => v.length));
-        
-        const parsedCriteriaByRow: Record<string, string>[] = [];
-        for (let i = 0; i < maxLen; i++) {
-            const rowCriteria: Record<string, string> = {};
-            for (const col of Object.keys(activeCriteria)) {
-                rowCriteria[col] = criteriaValuesByCol[col]?.[i];
-            }
-            parsedCriteriaByRow.push(rowCriteria);
-        }
-
-        const finalResults: Row[] = [];
-        const foundRowsTracker = new Set<string>();
-
-        for (const termRow of parsedCriteriaByRow) {
-            const isRowEffectivelyEmpty = Object.values(termRow).every(term => term === '' || term === undefined);
-
-            if (isRowEffectivelyEmpty) {
-                if (includeEmptyRowsInResults) {
-                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
-                }
-                continue;
-            }
-            const foundMatches = dataRows.filter(dataRow => 
-                Object.entries(termRow).every(([col, term]) => {
-                    if (term === '' || term === undefined) return true; // ignore empty term for a specific column
-                    return checkMatch(dataRow[col], activeCriteria[col].operator, term);
-                })
-            );
-
-            if (foundMatches.length > 0) {
-                const newMatches = foundMatches.filter(match => {
-                    const uniqueKey = JSON.stringify(match);
-                    return !foundRowsTracker.has(uniqueKey);
-                });
-
-                if (newMatches.length > 0) {
-                    newMatches.forEach(match => {
-                        const uniqueKey = JSON.stringify(match);
-                        foundRowsTracker.add(uniqueKey);
-                        finalResults.push({ ...match, __searchCriteria: termRow });
-                    });
-                } else {
-                    finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
-                }
-            } else {
-                const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
-                headers.forEach(header => {
-                    notFoundRow[header] = termRow[header] || '';
-                });
-                finalResults.push(notFoundRow);
-            }
-        }
-        setResults(finalResults);
-    } catch(e) {
-        console.error(`Gagal menjalankan kueri ${type}:`, e);
-        toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: "Tidak dapat mengambil data dari penyimpanan lokal." });
-    } finally {
-        setIsProcessing(false);
-    }
-  }, [searchCriteria, secondarySearchCriteria, searchColumns, secondarySearchColumns, primaryDataHeaders, secondaryDataHeaders, isPrimaryQueryInvalid, isSecondaryQueryInvalid, includeEmptyRowsInResults, toast]);
-
-  const handleIncludeEmptyRowsToggle = (checked: boolean) => {
+  const handleIncludeEmptyRowsToggle = useCallback((checked: boolean) => {
     setIncludeEmptyRowsInResults(checked);
-    if (!isPrimaryQueryInvalid) {
-      runQuery('primary');
-    }
-    if (!isSecondaryQueryInvalid) {
-      runQuery('secondary');
-    }
-  };
-
-  const handleRunPrimaryQuery = () => runQuery('primary');
-  const handleRunSecondaryQuery = () => runQuery('secondary');
+  }, []);
   
   const handleCopyResults = useCallback((dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => {
     if (!dataToCopy?.length || !columns.length) {
@@ -938,8 +932,6 @@ export const useExcelMatcher = () => {
     setNewSecondaryTemplateName,
     filteredResults,
     secondaryFilteredResults,
-    isPrimaryQueryInvalid,
-    isSecondaryQueryInvalid,
     isProcessing,
     currentTheme,
     selectedPrimaryRow,
@@ -966,8 +958,6 @@ export const useExcelMatcher = () => {
     handleDeleteTemplate: (name: string, type: 'primary' | 'secondary') => handleTemplateAction('delete', type, name),
     handleSearchCriteriaChange,
     handleSearchOperatorChange,
-    handleRunPrimaryQuery,
-    handleRunSecondaryQuery,
     handleCopyResults,
     handleRowClick: (row: Row) => handleRowClick(row, 'primary'),
     handleSecondaryRowClick: (row: Row) => handleRowClick(row, 'secondary'),
@@ -1001,3 +991,10 @@ const copyToClipboardFallback = (text: string) => {
   document.body.removeChild(textArea);
 };
 
+
+
+    
+
+    
+
+    

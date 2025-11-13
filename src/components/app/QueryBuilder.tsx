@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ListFilter, ArrowUp, ArrowDown, Type, Palette, Save, Heart, CheckSquare, Trash2, Search, Sparkle, Filter, Wand2, Loader2 } from "lucide-react";
+import { ListFilter, ArrowUp, ArrowDown, Type, Palette, Save, Heart, CheckSquare, Trash2, Search, Sparkle, Loader2 } from "lucide-react";
 import { type ColumnType, type SearchOperator, type SearchCriterion, type DisplayTemplate } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
 
@@ -32,8 +32,6 @@ interface QueryBuilderProps {
   newSecondaryTemplateName: string;
   searchCriteria: Record<string, SearchCriterion>;
   secondarySearchCriteria: Record<string, SearchCriterion>;
-  isPrimaryQueryInvalid: boolean;
-  isSecondaryQueryInvalid: boolean;
   isProcessing: boolean;
   currentTheme: string;
   includeEmptyRowsInResults: boolean;
@@ -55,8 +53,6 @@ interface QueryBuilderProps {
   handleDeleteTemplate: (name: string, type: 'primary' | 'secondary') => void;
   handleSearchCriteriaChange: (column: string, value: string, isSecondary: boolean) => void;
   handleSearchOperatorChange: (column: string, operator: SearchOperator, isSecondary: boolean) => void;
-  handleRunPrimaryQuery: () => void;
-  handleRunSecondaryQuery: () => void;
 }
 
 export default function QueryBuilder({
@@ -76,8 +72,6 @@ export default function QueryBuilder({
   newSecondaryTemplateName,
   searchCriteria,
   secondarySearchCriteria = {},
-  isPrimaryQueryInvalid,
-  isSecondaryQueryInvalid,
   isProcessing,
   currentTheme,
   includeEmptyRowsInResults,
@@ -99,13 +93,11 @@ export default function QueryBuilder({
   handleDeleteTemplate,
   handleSearchCriteriaChange,
   handleSearchOperatorChange,
-  handleRunPrimaryQuery,
-  handleRunSecondaryQuery,
 }: QueryBuilderProps) {
 
-  const handleMoveDisplayColumn = (index: number, direction: 'up' | 'down') => {
+  const handleMoveDisplayColumn = (index: number, direction: 'up' | 'down', type: 'primary' | 'secondary') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (activeTab === 'primary') {
+    if (type === 'primary') {
       if (newIndex >= 0 && newIndex < displayColumns.length) {
         moveDisplayColumn(index, newIndex);
       }
@@ -167,8 +159,8 @@ export default function QueryBuilder({
                                     </div>
                                     {isDisplayed && (
                                       <div className="flex items-center gap-1">
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'up')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'down')} disabled={index === displayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'up', 'primary')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'down', 'primary')} disabled={index === displayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
                                       </div>
                                     )}
                                   </div>
@@ -229,7 +221,12 @@ export default function QueryBuilder({
               </div>
               {/* Primary Search Criteria */}
               <div className="flex flex-col">
-                <CardHeader><CardTitle className="flex items-center gap-2">{currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}Kriteria Pencarian</CardTitle></CardHeader>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        {currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}
+                        Kriteria Pencarian
+                    </CardTitle>
+                </CardHeader>
                 <CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">
                   {Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map((col, index) => (
                     <div key={`criteria-${col}-${index}`} className="space-y-2">
@@ -250,16 +247,18 @@ export default function QueryBuilder({
                   )) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}
                 </CardContent>
                 <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center mt-4">
-                  <CardContent className="pt-6 text-center space-y-4">
-                    <div className="flex items-center space-x-2 justify-center">
-                      <Checkbox id="include-empty-rows-primary" checked={includeEmptyRowsInResults} onCheckedChange={handleIncludeEmptyRowsToggle} />
-                      <Label htmlFor="include-empty-rows-primary" className="font-normal cursor-pointer">Sertakan Baris Kosong di Hasil</Label>
-                    </div>
-                    <Button size="lg" className="w-full h-16 text-xl" onClick={handleRunPrimaryQuery} disabled={isProcessing || isPrimaryQueryInvalid}>
-                      {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <Wand2 className="mr-2 h-6 w-6" /> : <Filter className="mr-2 h-6 w-6" />)}
-                      Jalankan Filter Utama
-                    </Button>
-                  </CardContent>
+                    <CardContent className="pt-6 text-center space-y-4">
+                        <div className="flex items-center space-x-2 justify-center">
+                            <Checkbox id="include-empty-rows-primary" checked={includeEmptyRowsInResults} onCheckedChange={handleIncludeEmptyRowsToggle} />
+                            <Label htmlFor="include-empty-rows-primary" className="font-normal cursor-pointer">Sertakan Baris Kosong di Hasil</Label>
+                        </div>
+                        {isProcessing && (
+                            <div className="flex items-center justify-center text-muted-foreground">
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                <span>Memproses kueri...</span>
+                            </div>
+                        )}
+                    </CardContent>
                 </Card>
               </div>
             </div>
@@ -302,8 +301,8 @@ export default function QueryBuilder({
                                   </div>
                                   {isDisplayed && (
                                     <div className="flex items-center gap-1">
-                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'up')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'down')} disabled={index === secondaryDisplayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'up', 'secondary')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'down', 'secondary')} disabled={index === secondaryDisplayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
                                     </div>
                                   )}
                                 </div>
@@ -364,7 +363,12 @@ export default function QueryBuilder({
               </div>
               {/* Secondary Search Criteria */}
               <div className="flex flex-col">
-                <CardHeader><CardTitle className="flex items-center gap-2">{currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}Kriteria Pencarian</CardTitle></CardHeader>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        {currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}
+                        Kriteria Pencarian
+                    </CardTitle>
+                </CardHeader>
                 <CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">
                   {Array.from(secondarySearchColumns).length > 0 ? Array.from(secondarySearchColumns).map((col, index) => (
                     <div key={`criteria-${col}-${index}`} className="space-y-2">
@@ -385,16 +389,18 @@ export default function QueryBuilder({
                   )) : <p className="text-sm text-muted-foreground pt-4 text-center">Pilih kolom pencarian untuk menambahkan kriteria.</p>}
                 </CardContent>
                 <Card className="bg-primary/10 border-primary/20 flex flex-col justify-center mt-4">
-                  <CardContent className="pt-6 text-center space-y-4">
-                     <div className="flex items-center space-x-2 justify-center">
-                      <Checkbox id="include-empty-rows-secondary" checked={includeEmptyRowsInResults} onCheckedChange={handleIncludeEmptyRowsToggle} />
-                      <Label htmlFor="include-empty-rows-secondary" className="font-normal cursor-pointer">Sertakan Baris Kosong di Hasil</Label>
-                    </div>
-                    <Button size="lg" className="w-full h-16 text-xl" onClick={handleRunSecondaryQuery} disabled={isProcessing || isSecondaryQueryInvalid}>
-                      {isProcessing ? <Loader2 className="mr-2 h-6 w-6 animate-spin" /> : (currentTheme === 'pink' ? <Wand2 className="mr-2 h-6 w-6" /> : <Filter className="mr-2 h-6 w-6" />)}
-                      Jalankan Filter Sekunder
-                    </Button>
-                  </CardContent>
+                    <CardContent className="pt-6 text-center space-y-4">
+                        <div className="flex items-center space-x-2 justify-center">
+                            <Checkbox id="include-empty-rows-secondary" checked={includeEmptyRowsInResults} onCheckedChange={handleIncludeEmptyRowsToggle} />
+                            <Label htmlFor="include-empty-rows-secondary" className="font-normal cursor-pointer">Sertakan Baris Kosong di Hasil</Label>
+                        </div>
+                        {isProcessing && (
+                            <div className="flex items-center justify-center text-muted-foreground">
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                <span>Memproses kueri...</span>
+                            </div>
+                        )}
+                    </CardContent>
                 </Card>
               </div>
             </div>
@@ -404,3 +410,5 @@ export default function QueryBuilder({
     </Card>
   );
 }
+
+    

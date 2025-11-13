@@ -51,8 +51,6 @@ export default function Home() {
     setNewSecondaryTemplateName,
     filteredResults,
     secondaryFilteredResults,
-    isPrimaryQueryInvalid,
-    isSecondaryQueryInvalid,
     isProcessing,
     currentTheme,
     selectedPrimaryRow,
@@ -78,8 +76,6 @@ export default function Home() {
     handleDeleteTemplate,
     handleSearchCriteriaChange,
     handleSearchOperatorChange,
-    handleRunPrimaryQuery,
-    handleRunSecondaryQuery,
     handleCopyResults,
     handleRowClick,
     handleSecondaryRowClick,
@@ -94,9 +90,9 @@ export default function Home() {
     handleColumnToConvertToggle,
     handleConvertScientific,
     handleConvertAllScientific,
+    activeTab,
+    setActiveTab,
   } = useExcelMatcher();
-
-  const [activeTab, setActiveTab] = useState<'primary' | 'secondary'>('primary');
 
   const handlePrimaryDisplayColumnToggle = (column: string, checked: boolean) => {
     handleDisplayColumnToggle(column, checked);
@@ -185,8 +181,6 @@ export default function Home() {
             newSecondaryTemplateName={newSecondaryTemplateName}
             searchCriteria={searchCriteria}
             secondarySearchCriteria={secondarySearchCriteria}
-            isPrimaryQueryInvalid={isPrimaryQueryInvalid}
-            isSecondaryQueryInvalid={isSecondaryQueryInvalid}
             isProcessing={isProcessing}
             currentTheme={currentTheme}
             includeEmptyRowsInResults={includeEmptyRowsInResults}
@@ -208,8 +202,6 @@ export default function Home() {
             handleDeleteTemplate={handleDeleteTemplate}
             handleSearchCriteriaChange={handleSearchCriteriaChange}
             handleSearchOperatorChange={handleSearchOperatorChange}
-            handleRunPrimaryQuery={handleRunPrimaryQuery}
-            handleRunSecondaryQuery={handleRunSecondaryQuery}
           />
         </div>
 
@@ -293,3 +285,5 @@ export default function Home() {
     </main>
   );
 }
+
+    
