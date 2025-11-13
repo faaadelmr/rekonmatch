@@ -263,26 +263,26 @@ export const useExcelMatcher = () => {
     const searchCols = isPrimary ? searchColumns : secondarySearchColumns;
     const headers = isPrimary ? primaryDataHeaders : secondaryDataHeaders;
     const setResults = isPrimary ? setFilteredResults : setSecondaryFilteredResults;
-
+  
     const activeCriteria = Object.fromEntries(
         Object.entries(criteria).filter(([col, crit]) => searchCols.has(col) && crit?.value.trim())
     );
     const isQueryInvalid = searchCols.size === 0 || Object.keys(activeCriteria).length === 0;
-
+  
     if (isQueryInvalid) {
         setResults([]);
         return;
     }
     
     setIsProcessing(true);
-
+  
     try {
         const dataRows = await get<Row[]>(`${type}_rows`);
         if (!dataRows) {
             toast({ variant: "destructive", title: `Data ${isPrimary ? 'Utama' : 'Sekunder'} Tidak Ditemukan` });
             return;
         }
-
+  
         const checkMatch = (value: any, operator: SearchOperator, term: string): boolean => {
             const val = String(value ?? '').toLowerCase();
             const t = term.toLowerCase();
@@ -311,40 +311,51 @@ export const useExcelMatcher = () => {
             }
             parsedCriteriaByRow.push(rowCriteria);
         }
-
+  
         const finalResults: Row[] = [];
+        const processedCriteria = new Set<string>();
         const foundRowsTracker = new Set<string>();
-
+  
         for (const termRow of parsedCriteriaByRow) {
+            const termKey = JSON.stringify(Object.entries(termRow).sort());
             const isRowEffectivelyEmpty = Object.values(termRow).every(term => term === '' || term === undefined);
-
+  
             if (isRowEffectivelyEmpty) {
                 if (includeEmptyRowsInResults) {
                     finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
                 }
                 continue;
             }
+  
+            if (processedCriteria.has(termKey)) {
+                if (includeEmptyRowsInResults) {
+                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
+                }
+                continue;
+            }
+            
+            processedCriteria.add(termKey);
+  
             const foundMatches = dataRows.filter(dataRow => 
                 Object.entries(termRow).every(([col, term]) => {
-                    if (term === '' || term === undefined) return true; // ignore empty term for a specific column
+                    if (term === '' || term === undefined) return true;
                     return checkMatch(dataRow[col], activeCriteria[col].operator, term);
                 })
             );
-
+  
             if (foundMatches.length > 0) {
-                const newMatches = foundMatches.filter(match => {
+                let newMatchesFound = 0;
+                foundMatches.forEach(match => {
                     const uniqueKey = JSON.stringify(match);
-                    return !foundRowsTracker.has(uniqueKey);
-                });
-
-                if (newMatches.length > 0) {
-                    newMatches.forEach(match => {
-                        const uniqueKey = JSON.stringify(match);
+                    if (!foundRowsTracker.has(uniqueKey)) {
                         foundRowsTracker.add(uniqueKey);
                         finalResults.push({ ...match, __searchCriteria: termRow });
-                    });
-                } else {
-                    finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
+                        newMatchesFound++;
+                    }
+                });
+  
+                if (newMatchesFound === 0 && includeEmptyRowsInResults) {
+                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
                 }
             } else {
                 const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
@@ -991,10 +1002,5 @@ const copyToClipboardFallback = (text: string) => {
   document.body.removeChild(textArea);
 };
 
-
-
-    
-
-    
 
     
