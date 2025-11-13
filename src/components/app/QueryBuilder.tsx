@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ListFilter, ArrowUp, ArrowDown, Type, Palette, Save, Heart, CheckSquare, Trash2, Search, Sparkle, Filter, Wand2, Loader2 } from "lucide-react";
-import { type ColumnType, type SearchOperator, type SearchCriterion } from "@/hooks/useExcelMatcher";
+import { type ColumnType, type SearchOperator, type SearchCriterion, type DisplayTemplate } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
 
 interface QueryBuilderProps {
@@ -26,8 +26,8 @@ interface QueryBuilderProps {
   secondaryDisplayColumns: string[];
   columnTypes: Record<string, ColumnType>;
   columnColors: Record<string, string>;
-  primaryDisplayTemplates: Record<string, string[]>;
-  secondaryDisplayTemplates: Record<string, string[]>;
+  primaryDisplayTemplates: Record<string, DisplayTemplate>;
+  secondaryDisplayTemplates: Record<string, DisplayTemplate>;
   newPrimaryTemplateName: string;
   newSecondaryTemplateName: string;
   searchCriteria: Record<string, SearchCriterion>;
@@ -44,8 +44,8 @@ interface QueryBuilderProps {
   handleSelectAllSecondaryDisplayColumns: (checked: boolean) => void;
   handleDisplayColumnToggle: (column: string, checked: boolean) => void;
   handleSecondaryDisplayColumnToggle: (column: string, checked: boolean) => void;
-  moveDisplayColumn: (index: number, direction: 'up' | 'down') => void;
-  moveSecondaryDisplayColumn: (index: number, direction: 'up' | 'down') => void;
+  moveDisplayColumn: (startIndex: number, endIndex: number) => void;
+  moveSecondaryDisplayColumn: (startIndex: number, endIndex: number) => void;
   handleColumnTypeChange: (column: string, type: ColumnType) => void;
   handleColumnColorChange: (column: string, color: string) => void;
   setNewPrimaryTemplateName: (name: string) => void;
@@ -102,6 +102,21 @@ export default function QueryBuilder({
   handleRunPrimaryQuery,
   handleRunSecondaryQuery,
 }: QueryBuilderProps) {
+
+  const handleMoveDisplayColumn = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (activeTab === 'primary') {
+      if (newIndex >= 0 && newIndex < displayColumns.length) {
+        moveDisplayColumn(index, newIndex);
+      }
+    } else {
+      if (newIndex >= 0 && newIndex < secondaryDisplayColumns.length) {
+        moveSecondaryDisplayColumn(index, newIndex);
+      }
+    }
+  };
+
+
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -152,8 +167,8 @@ export default function QueryBuilder({
                                     </div>
                                     {isDisplayed && (
                                       <div className="flex items-center gap-1">
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'up')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveDisplayColumn(index, 'down')} disabled={index === displayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'up')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'down')} disabled={index === displayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
                                       </div>
                                     )}
                                   </div>
@@ -287,8 +302,8 @@ export default function QueryBuilder({
                                   </div>
                                   {isDisplayed && (
                                     <div className="flex items-center gap-1">
-                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveSecondaryDisplayColumn(index, 'up')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
-                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveSecondaryDisplayColumn(index, 'down')} disabled={index === secondaryDisplayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'up')} disabled={index === 0}><ArrowUp className="h-4 w-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleMoveDisplayColumn(index, 'down')} disabled={index === secondaryDisplayColumns.length - 1}><ArrowDown className="h-4 w-4" /></Button>
                                     </div>
                                   )}
                                 </div>

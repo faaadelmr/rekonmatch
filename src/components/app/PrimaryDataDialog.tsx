@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Copy, Settings, Save, Heart, CheckSquare, Trash2 } from "lucide-react";
 import { type Row } from "@/lib/mock-data";
-import { type ColumnType } from "@/hooks/useExcelMatcher";
+import { type ColumnType, type DisplayTemplate } from "@/hooks/useExcelMatcher";
 
 interface PrimaryDataDialogProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ interface PrimaryDataDialogProps {
   primaryDataHeaders: string[];
   primaryResults: Row[];
   primaryDisplayColumns: string[];
-  primaryDisplayTemplates: Record<string, string[]>;
+  primaryDisplayTemplates: Record<string, DisplayTemplate>;
   newPrimaryTemplateName: string;
   currentTheme: string;
   handlePrimaryDisplayColumnToggle: (column: string, checked: boolean) => void;

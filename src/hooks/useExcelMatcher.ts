@@ -142,8 +142,15 @@ export interface SearchCriterion {
   operator: SearchOperator;
 }
 
+export interface DisplayTemplate {
+  displayColumns: string[];
+  columnTypes: Record<string, ColumnType>;
+  columnColors: Record<string, string>;
+}
+
 export const useExcelMatcher = () => {
   const [appState, setAppState] = useState<AppState>('initial');
+  const [activeTab, setActiveTab] = useState<'primary' | 'secondary'>('primary');
   
   const [primaryDataHeaders, setPrimaryDataHeaders] = useState<string[]>([]);
   const [primaryFileName, setPrimaryFileName] = useState<string>('');
@@ -170,9 +177,9 @@ export const useExcelMatcher = () => {
   
   const [columnTypes, setColumnTypes] = useState<Record<string, ColumnType>>({});
   const [columnColors, setColumnColors] = useState<Record<string, string>>({});
-  const [primaryDisplayTemplates, setPrimaryDisplayTemplates] = useState<Record<string, string[]>>({});
+  const [primaryDisplayTemplates, setPrimaryDisplayTemplates] = useState<Record<string, DisplayTemplate>>({});
   const [newPrimaryTemplateName, setNewPrimaryTemplateName] = useState('');
-  const [secondaryDisplayTemplates, setSecondaryDisplayTemplates] = useState<Record<string, string[]>>({});
+  const [secondaryDisplayTemplates, setSecondaryDisplayTemplates] = useState<Record<string, DisplayTemplate>>({});
   const [newSecondaryTemplateName, setNewSecondaryTemplateName] = useState('');
   
   const [isPrimaryQueryInvalid, setIsPrimaryQueryInvalid] = useState(true);
@@ -486,7 +493,7 @@ export const useExcelMatcher = () => {
     setDisplayColumns(prev => {
       const newCols = checked ? [...prev, column] : prev.filter(c => c !== column);
       localStorage.setItem(`rekonMatch_${type}DisplayColumns`, JSON.stringify(newCols));
-      if(type === 'primary' && !checked) {
+      if(!checked) {
         const newTypes = {...columnTypes}; delete newTypes[column]; setColumnTypes(newTypes);
         localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(newTypes));
         const newColors = {...columnColors}; delete newColors[column]; setColumnColors(newColors);
@@ -502,22 +509,22 @@ export const useExcelMatcher = () => {
     const newCols = checked ? headers : [];
     setDisplayCols(newCols);
     localStorage.setItem(`rekonMatch_${type}DisplayColumns`, JSON.stringify(newCols));
-    if (type === 'primary' && !checked) {
+    if (!checked) {
         setColumnTypes({}); localStorage.removeItem('rekonMatch_columnTypes');
         setColumnColors({}); localStorage.removeItem('rekonMatch_columnColors');
     }
   };
 
-  const moveDisplayColumn = (index: number, direction: 'up' | 'down', type: 'primary' | 'secondary' = 'primary') => {
+  const moveDisplayColumn = (startIndex: number, endIndex: number, type: 'primary' | 'secondary' = 'primary') => {
     const displayColumns = type === 'primary' ? primaryDisplayColumns : secondaryDisplayColumns;
     const setDisplayColumns = type === 'primary' ? setPrimaryDisplayColumns : setSecondaryDisplayColumns;
     if (!displayColumns) return;
-    const newDisplayColumns = [...displayColumns];
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= newDisplayColumns.length) return;
-    [newDisplayColumns[index], newDisplayColumns[newIndex]] = [newDisplayColumns[newIndex], newDisplayColumns[index]];
-    setDisplayColumns(newDisplayColumns);
-    localStorage.setItem(`rekonMatch_${type}DisplayColumns`, JSON.stringify(newDisplayColumns));
+    const result = Array.from(displayColumns);
+    const [removed] = result.splice(startIndex, 1);
+    result.splice(endIndex, 0, removed);
+    
+    setDisplayColumns(result);
+    localStorage.setItem(`rekonMatch_${type}DisplayColumns`, JSON.stringify(result));
   };
   
   const handleColumnTypeChange = (column: string, type: ColumnType) => {
@@ -533,51 +540,66 @@ export const useExcelMatcher = () => {
   };
 
   const handleTemplateAction = (action: 'save' | 'load' | 'delete', type: 'primary' | 'secondary', name?: string) => {
-    const stateMapping = {
-        primary: {
-            templates: primaryDisplayTemplates,
-            setTemplates: setPrimaryDisplayTemplates,
-            newName: newPrimaryTemplateName,
-            setNewName: setNewPrimaryTemplateName,
-            displayColumns: primaryDisplayColumns,
-            setDisplayColumns: setPrimaryDisplayColumns,
-            key: 'rekonMatch_primaryTemplates',
-            typeText: 'Utama'
-        },
-        secondary: {
-            templates: secondaryDisplayTemplates,
-            setTemplates: setSecondaryDisplayTemplates,
-            newName: newSecondaryTemplateName,
-            setNewName: setNewSecondaryTemplateName,
-            displayColumns: secondaryDisplayColumns,
-            setDisplayColumns: setSecondaryDisplayColumns,
-            key: 'rekonMatch_secondaryTemplates',
-            typeText: 'Sekunder'
-        }
-    };
+      const stateMapping = {
+          primary: {
+              templates: primaryDisplayTemplates,
+              setTemplates: setPrimaryDisplayTemplates,
+              newName: newPrimaryTemplateName,
+              setNewName: setNewPrimaryTemplateName,
+              displayColumns: primaryDisplayColumns,
+              setDisplayColumns: setPrimaryDisplayColumns,
+              key: 'rekonMatch_primaryTemplates',
+              typeText: 'Utama'
+          },
+          secondary: {
+              templates: secondaryDisplayTemplates,
+              setTemplates: setSecondaryDisplayTemplates,
+              newName: newSecondaryTemplateName,
+              setNewName: setNewSecondaryTemplateName,
+              displayColumns: secondaryDisplayColumns,
+              setDisplayColumns: setSecondaryDisplayColumns,
+              key: 'rekonMatch_secondaryTemplates',
+              typeText: 'Sekunder'
+          }
+      };
+  
+      const { templates, setTemplates, newName, setNewName, displayColumns, setDisplayColumns, key, typeText } = stateMapping[type];
+      
+      if (action === 'save') {
+          if (!newName.trim()) {
+              toast({ variant: 'destructive', title: 'Nama Template Kosong' });
+              return;
+          }
+          const templateData: DisplayTemplate = {
+              displayColumns,
+              columnTypes,
+              columnColors
+          };
+          const updated = { ...templates, [newName]: templateData };
+          setTemplates(updated);
+          localStorage.setItem(key, JSON.stringify(updated));
+          setNewName('');
+          toast({ title: `Template ${typeText} Disimpan` });
 
-    const { templates, setTemplates, newName, setNewName, displayColumns, setDisplayColumns, key, typeText } = stateMapping[type];
-    
-    if (action === 'save') {
-        if (!newName.trim()) {
-            toast({ variant: 'destructive', title: 'Nama Template Kosong' });
-            return;
-        }
-        const updated = { ...templates, [newName]: displayColumns };
-        setTemplates(updated);
-        localStorage.setItem(key, JSON.stringify(updated));
-        setNewName('');
-        toast({ title: `Template ${typeText} Disimpan` });
-    } else if (action === 'load' && name && templates[name]) {
-        setDisplayColumns(templates[name]);
-        localStorage.setItem(`rekonMatch_${type}DisplayColumns`, JSON.stringify(templates[name]));
-        toast({ title: `Template ${typeText} Dimuat` });
-    } else if (action === 'delete' && name) {
-        const { [name]: _, ...remaining } = templates;
-        setTemplates(remaining);
-        localStorage.setItem(key, JSON.stringify(remaining));
-        toast({ variant: 'destructive', title: `Template ${typeText} Dihapus` });
-    }
+      } else if (action === 'load' && name && templates[name]) {
+          const loadedTemplate = templates[name];
+          setDisplayColumns(loadedTemplate.displayColumns);
+          localStorage.setItem(`rekonMatch_${type}DisplayColumns`, JSON.stringify(loadedTemplate.displayColumns));
+          
+          setColumnTypes(loadedTemplate.columnTypes);
+          localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(loadedTemplate.columnTypes));
+          
+          setColumnColors(loadedTemplate.columnColors);
+          localStorage.setItem('rekonMatch_columnColors', JSON.stringify(loadedTemplate.columnColors));
+          
+          toast({ title: `Template ${typeText} Dimuat` });
+
+      } else if (action === 'delete' && name) {
+          const { [name]: _, ...remaining } = templates;
+          setTemplates(remaining);
+          localStorage.setItem(key, JSON.stringify(remaining));
+          toast({ variant: 'destructive', title: `Template ${typeText} Dihapus` });
+      }
   };
 
  const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
@@ -882,6 +904,8 @@ export const useExcelMatcher = () => {
 
   return {
     appState,
+    activeTab,
+    setActiveTab,
     primaryDataHeaders,
     primaryFileName,
     secondaryDataHeaders,
@@ -933,8 +957,8 @@ export const useExcelMatcher = () => {
     handleSelectAllSecondaryDisplayColumns: (checked: boolean) => handleSelectAllDisplayColumns(checked, 'secondary'),
     handleDisplayColumnToggle: (column: string, checked: boolean) => handleDisplayColumnToggle(column, checked, 'primary'),
     handleSecondaryDisplayColumnToggle: (column: string, checked: boolean) => handleDisplayColumnToggle(column, checked, 'secondary'),
-    moveDisplayColumn: (index: number, direction: 'up' | 'down') => moveDisplayColumn(index, direction, 'primary'),
-    moveSecondaryDisplayColumn: (index: number, direction: 'up' | 'down') => moveDisplayColumn(index, direction, 'secondary'),
+    moveDisplayColumn: (startIndex: number, endIndex: number) => moveDisplayColumn(startIndex, endIndex, 'primary'),
+    moveSecondaryDisplayColumn: (startIndex: number, endIndex: number) => moveDisplayColumn(startIndex, endIndex, 'secondary'),
     handleColumnTypeChange,
     handleColumnColorChange,
     handleSaveTemplate: (type: 'primary' | 'secondary') => handleTemplateAction('save', type, type === 'primary' ? newPrimaryTemplateName : newSecondaryTemplateName),
@@ -976,3 +1000,4 @@ const copyToClipboardFallback = (text: string) => {
   document.execCommand('copy');
   document.body.removeChild(textArea);
 };
+
