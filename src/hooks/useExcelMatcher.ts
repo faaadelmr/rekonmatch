@@ -5,6 +5,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { type Row } from "@/lib/mock-data";
 import { set, get, clear } from 'idb-keyval';
+import * as XLSX from 'xlsx';
 
 export type { Row };
 
@@ -474,12 +475,12 @@ export const useExcelMatcher = () => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'secondary') => {
     const file = event.target.files?.[0];
     if (!file) return;
-  
+
     setIsLoadingFile(fileType);
     toast({ title: 'Memproses File...', description: `Membaca ${file.name}. Ini mungkin memakan waktu untuk file besar.` });
-    
+
     try {
-        const XLSX = await import('xlsx');
+        // XLSX sekarang tersedia dari impor statis di atas
         const fileContent = await file.arrayBuffer();
         
         const workbook = XLSX.read(fileContent, { type: 'array', cellDates: false, dense: true });

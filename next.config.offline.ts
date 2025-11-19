@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Nonaktifkan penggunaan gambar remote untuk mode offline
   images: {
     unoptimized: true, // Gunakan gambar lokal saja, jangan optimasi dari remote
   },
@@ -17,12 +18,13 @@ const nextConfig: NextConfig = {
       allowedActions: ["**/*"],
     },
   },
-  // Hapus referensi ke paket AI karena tidak digunakan dalam mode offline
+  // Hapus konfigurasi serverExternalPackages untuk paket AI karena tidak digunakan dalam mode offline
 };
 
 export default withPWA({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
+  // Aktifkan PWA bahkan di development untuk testing offline
+  disable: false, // Ubah dari process.env.NODE_ENV === 'development'
 })(nextConfig);

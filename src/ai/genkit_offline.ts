@@ -23,14 +23,14 @@ export const ai = {
   generate: async (options: GenerationOptions): Promise<string> => {
     return Promise.reject(new Error("Fungsi AI tidak tersedia dalam mode offline"));
   },
-
+  
   /**
    * Fungsi dummy untuk menggantikan fungsi configure dari Genkit
    */
   configure: (config: AIConfig): void => {
     console.warn("Fungsi konfigurasi AI tidak tersedia dalam mode offline");
   },
-
+  
   // Tambahkan fungsi dummy lainnya sesuai kebutuhan aplikasi
 };
 
@@ -39,3 +39,6 @@ export const isOfflineMode = (): boolean => {
   // Dalam implementasi nyata, Anda mungkin ingin mengecek koneksi jaringan
   return typeof window !== 'undefined' && window.location.protocol === 'file:';
 };
+
+// Tambahkan ekspor lain yang mungkin dibutuhkan oleh file lain
+export default ai;
