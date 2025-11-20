@@ -6,7 +6,7 @@ import { useExcelMatcher, type Row } from '@/hooks/useExcelMatcher';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Sparkles, HeartHandshake, Upload, AlertTriangle, Table as TableIcon, X } from "lucide-react";
+import { Loader2, Sparkles, HeartHandshake, Upload, AlertTriangle, Table as TableIcon, X, Info } from "lucide-react";
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import DataSourceManager from '@/components/app/DataSourceManager';
 import QueryBuilder from '@/components/app/QueryBuilder';
@@ -14,6 +14,7 @@ import ResultsDisplay from '@/components/app/ResultsDisplay';
 import SecondaryDataDialog from '@/components/app/SecondaryDataDialog';
 import PrimaryDataDialog from '@/components/app/PrimaryDataDialog';
 import ScientificNotationConverterDialog from '@/components/app/ScientificNotationConverterDialog';
+import AppInfoDialog from '@/components/app/AppInfoDialog';
 
 
 export default function Home() {
@@ -94,6 +95,8 @@ export default function Home() {
     setActiveTab,
   } = useExcelMatcher();
 
+  const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
+
   const handlePrimaryDisplayColumnToggle = (column: string, checked: boolean) => {
     handleDisplayColumnToggle(column, checked);
   };
@@ -105,7 +108,12 @@ export default function Home() {
   if (appState === 'initial') {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gradient-to-br from-background to-slate-50 dark:from-slate-900 dark:to-slate-950">
-        <div className="absolute top-6 right-6"><ThemeSwitcher /></div>
+        <div className="absolute top-6 right-6 flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => setIsInfoDialogOpen(true)} aria-label="Tentang Aplikasi">
+                <Info className="h-5 w-5" />
+            </Button>
+            <ThemeSwitcher />
+        </div>
         <Card className="w-full max-w-lg text-center shadow-2xl animate-fade-in-up border-0 bg-card/80 dark:bg-card/50 backdrop-blur-lg">
           <CardHeader className="pb-4">
             <div className="mx-auto bg-primary/10 text-primary p-4 rounded-full w-fit mb-4">
@@ -128,6 +136,7 @@ export default function Home() {
           </CardContent>
           <CardFooter><p className="text-xs text-muted-foreground w-full">Mendukung .xlsx, .xls, .csv. Semua pemrosesan dilakukan di browser Anda (tenang,👌amaan..)</p></CardFooter>
         </Card>
+        <AppInfoDialog isOpen={isInfoDialogOpen} onOpenChange={setIsInfoDialogOpen} />
       </main>
     );
   }
@@ -136,7 +145,13 @@ export default function Home() {
     <main className="min-h-screen p-4 sm:p-6 lg:p-8">
       <header className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3"><TableIcon className="w-8 h-8 text-primary" /><h1 className="text-3xl font-bold">RekonMatch</h1></div>
-        <div className="flex items-center gap-2"><ThemeSwitcher /><Button variant="outline" onClick={handleReset}><X className="w-4 h-4 mr-2" />Mulai Ulang</Button></div>
+        <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => setIsInfoDialogOpen(true)} aria-label="Tentang Aplikasi">
+                <Info className="h-5 w-5" />
+            </Button>
+            <ThemeSwitcher />
+            <Button variant="outline" onClick={handleReset}><X className="w-4 h-4 mr-2" />Mulai Ulang</Button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -282,8 +297,8 @@ export default function Home() {
         handleColumnToConvertToggle={handleColumnToConvertToggle}
         handleConvertScientific={handleConvertScientific}
       />
+
+      <AppInfoDialog isOpen={isInfoDialogOpen} onOpenChange={setIsInfoDialogOpen} />
     </main>
   );
 }
-
-    
