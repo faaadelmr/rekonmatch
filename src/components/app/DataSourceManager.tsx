@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, FileText, FileCheck2, ArrowRightLeft, Upload, HeartHandshake, Flower2, Link2 } from "lucide-react";
+import { Loader2, FileText, FileCheck2, ArrowRightLeft, Upload, HeartHandshake, Flower2, Link2, Fingerprint } from "lucide-react";
 
 interface DataSourceManagerProps {
   primaryDataHeaders: string[];
@@ -15,6 +15,10 @@ interface DataSourceManagerProps {
   secondaryFileName: string;
   primaryRowCount?: number;
   secondaryRowCount?: number;
+  primaryAppendIdColumn: string;
+  setPrimaryAppendIdColumn: (value: string) => void;
+  secondaryAppendIdColumn: string;
+  setSecondaryAppendIdColumn: (value: string) => void;
   isLoadingFile: 'primary' | 'secondary' | false;
   primaryFileInputRef: React.RefObject<HTMLInputElement>;
   secondaryFileInputRef: React.RefObject<HTMLInputElement>;
@@ -38,6 +42,10 @@ export default function DataSourceManager({
   secondaryFileName,
   primaryRowCount = 0,
   secondaryRowCount = 0,
+  primaryAppendIdColumn,
+  setPrimaryAppendIdColumn,
+  secondaryAppendIdColumn,
+  setSecondaryAppendIdColumn,
   isLoadingFile,
   primaryFileInputRef,
   secondaryFileInputRef,
@@ -73,8 +81,34 @@ export default function DataSourceManager({
           </CardHeader>
           <CardContent>
             <input type="file" ref={primaryFileInputRef} onChange={(e) => handleFileChange(e, 'primary')} className="hidden" accept=".xlsx, .xls, .csv" />
+            
+            {hasPrimaryData && (
+              <div className="mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <Label htmlFor="primary-append-id" className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
+                  <Fingerprint className="w-3 h-3 text-primary" /> Kolom ID Update (Opsional)
+                </Label>
+                <Select 
+                  value={primaryAppendIdColumn || "none"} 
+                  onValueChange={(val) => setPrimaryAppendIdColumn(val === "none" ? "" : val)}
+                >
+                  <SelectTrigger id="primary-append-id" className="h-9 text-xs bg-muted/50">
+                    <SelectValue placeholder="Pilih kolom ID..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa ID (Saring Baris Duplikat)</SelectItem>
+                    {primaryDataHeaders.filter(h => h).map((h, i) => (
+                      <SelectItem key={`p-id-${h}-${i}`} value={h}>{h}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                  Jika dipilih, data dengan ID yang sama akan <strong>diperbarui</strong>, bukan ditambah sebagai baris baru.
+                </p>
+              </div>
+            )}
+
             {!hasPrimaryData ? (
-              <Button className="w-full" onClick={() => handleUploadClick('primary', 'replace')} disabled={!!isLoadingFile}>
+              <Button className="w-full shadow-sm" onClick={() => handleUploadClick('primary', 'replace')} disabled={!!isLoadingFile}>
                 {isLoadingFile === 'primary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />)}
                 Pilih File Utama
               </Button>
@@ -110,8 +144,34 @@ export default function DataSourceManager({
           </CardHeader>
           <CardContent>
             <input type="file" ref={secondaryFileInputRef} onChange={(e) => handleFileChange(e, 'secondary')} className="hidden" accept=".xlsx, .xls, .csv" />
+
+            {hasSecondaryData && (
+              <div className="mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <Label htmlFor="secondary-append-id" className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
+                  <Fingerprint className="w-3 h-3 text-primary" /> Kolom ID Update (Opsional)
+                </Label>
+                <Select 
+                  value={secondaryAppendIdColumn || "none"} 
+                  onValueChange={(val) => setSecondaryAppendIdColumn(val === "none" ? "" : val)}
+                >
+                  <SelectTrigger id="secondary-append-id" className="h-9 text-xs bg-muted/50">
+                    <SelectValue placeholder="Pilih kolom ID..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Tanpa ID (Saring Baris Duplikat)</SelectItem>
+                    {secondaryDataHeaders.filter(h => h).map((h, i) => (
+                      <SelectItem key={`s-id-${h}-${i}`} value={h}>{h}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground mt-1.5 leading-relaxed">
+                  Gunakan ini jika Anda ingin melakukan sinkronisasi data berdasarkan kolom unik.
+                </p>
+              </div>
+            )}
+
             {!hasSecondaryData ? (
-              <Button className="w-full" onClick={() => handleUploadClick('secondary', 'replace')} disabled={!hasPrimaryData || !!isLoadingFile}>
+              <Button className="w-full shadow-sm" onClick={() => handleUploadClick('secondary', 'replace')} disabled={!hasPrimaryData || !!isLoadingFile}>
                 {isLoadingFile === 'secondary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (currentTheme === 'pink' ? <HeartHandshake className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />)}
                 Pilih File Sekunder
               </Button>

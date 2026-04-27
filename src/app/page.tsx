@@ -57,6 +57,10 @@ export default function Home() {
     selectedPrimaryRow,
     primaryRowCount,
     secondaryRowCount,
+    primaryAppendIdColumn,
+    setPrimaryAppendIdColumn,
+    secondaryAppendIdColumn,
+    setSecondaryAppendIdColumn,
     currentLookupValue,
     isSecondarySheetOpen,
     isPrimarySheetOpen,
@@ -165,6 +169,10 @@ export default function Home() {
             secondaryFileName={secondaryFileName}
             primaryRowCount={primaryRowCount}
             secondaryRowCount={secondaryRowCount}
+            primaryAppendIdColumn={primaryAppendIdColumn}
+            setPrimaryAppendIdColumn={setPrimaryAppendIdColumn}
+            secondaryAppendIdColumn={secondaryAppendIdColumn}
+            setSecondaryAppendIdColumn={setSecondaryAppendIdColumn}
             isLoadingFile={isLoadingFile}
             primaryFileInputRef={primaryFileInputRef}
             secondaryFileInputRef={secondaryFileInputRef}

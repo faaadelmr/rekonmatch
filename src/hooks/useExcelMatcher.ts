@@ -172,6 +172,8 @@ export const useExcelMatcher = () => {
   
   const [primaryRowCount, setPrimaryRowCount] = useState<number>(0);
   const [secondaryRowCount, setSecondaryRowCount] = useState<number>(0);
+  const [primaryAppendIdColumn, setPrimaryAppendIdColumn] = useState<string>('');
+  const [secondaryAppendIdColumn, setSecondaryAppendIdColumn] = useState<string>('');
   
   const [secondaryResults, setSecondaryResults] = useState<Row[]>([]);
   const [isSecondarySheetOpen, setIsSecondarySheetOpen] = useState(false);
@@ -531,29 +533,62 @@ export const useExcelMatcher = () => {
                 
                 if (headersMatch) {
                     const existingRows = await get<Row[]>(`${fileType}_rows`) || [];
-                    
-                    const existingRowStrings = new Set(existingRows.map(r => {
-                         return existingHeaders.map(h => String(r[h] || '')).join('|||');
-                    }));
-                    
-                    let duplicateCount = 0;
-                    const uniqueNewRows = rows.filter(r => {
-                         const str = existingHeaders.map(h => String(r[h] || '')).join('|||');
-                         if (existingRowStrings.has(str)) {
-                             duplicateCount++;
-                             return false;
-                         }
-                         existingRowStrings.add(str);
-                         return true;
-                    });
-                    
-                    if (duplicateCount > 0) {
-                        toast({ title: "Data Disaring", description: `${duplicateCount} baris duplikat diabaikan. ${uniqueNewRows.length} baris baru ditambahkan.` });
+                    const idColumn = fileType === 'primary' ? primaryAppendIdColumn : secondaryAppendIdColumn;
+
+                    if (idColumn && headers.includes(idColumn)) {
+                        const rowMap = new Map<string, Row>();
+                        existingRows.forEach(r => {
+                            const idValue = String(r[idColumn] || '');
+                            if (idValue) rowMap.set(idValue, r);
+                        });
+
+                        let updateCount = 0;
+                        let newCount = 0;
+
+                        rows.forEach(newRow => {
+                            const idValue = String(newRow[idColumn] || '');
+                            if (idValue) {
+                                if (rowMap.has(idValue)) {
+                                    updateCount++;
+                                } else {
+                                    newCount++;
+                                }
+                                rowMap.set(idValue, newRow);
+                            }
+                        });
+
+                        finalHeaders = existingHeaders;
+                        finalRows = Array.from(rowMap.values());
+                        isReplaced = false;
+
+                        toast({ 
+                            title: "Data Diperbarui", 
+                            description: `${updateCount} baris diperbarui, ${newCount} baris baru ditambahkan (ID: ${idColumn}).` 
+                        });
+                    } else {
+                        const existingRowStrings = new Set(existingRows.map(r => {
+                             return existingHeaders.map(h => String(r[h] || '')).join('|||');
+                        }));
+                        
+                        let duplicateCount = 0;
+                        const uniqueNewRows = rows.filter(r => {
+                             const str = existingHeaders.map(h => String(r[h] || '')).join('|||');
+                             if (existingRowStrings.has(str)) {
+                                 duplicateCount++;
+                                 return false;
+                             }
+                             existingRowStrings.add(str);
+                             return true;
+                        });
+                        
+                        if (duplicateCount > 0) {
+                            toast({ title: "Data Disaring", description: `${duplicateCount} baris duplikat diabaikan. ${uniqueNewRows.length} baris baru ditambahkan.` });
+                        }
+                        
+                        finalHeaders = existingHeaders;
+                        finalRows = [...existingRows, ...uniqueNewRows];
+                        isReplaced = false;
                     }
-                    
-                    finalHeaders = existingHeaders;
-                    finalRows = [...existingRows, ...uniqueNewRows];
-                    isReplaced = false;
                 } else {
                     toast({ variant: "destructive", title: "Kolom Berbeda", description: "Kolom pada file tidak sama. Data diganti seluruhnya." });
                 }
@@ -613,6 +648,8 @@ export const useExcelMatcher = () => {
       setSecondaryFileName('');
       setPrimaryRowCount(0);
       setSecondaryRowCount(0);
+      setPrimaryAppendIdColumn('');
+      setSecondaryAppendIdColumn('');
       resetDataStates('primary', null);
       resetDataStates('secondary', null);
       toast({ title: 'Reset Berhasil', description: 'Semua data dan pengaturan lokal telah dihapus.' });
@@ -1009,6 +1046,10 @@ export const useExcelMatcher = () => {
     selectedPrimaryRow,
     primaryRowCount,
     secondaryRowCount,
+    primaryAppendIdColumn,
+    setPrimaryAppendIdColumn,
+    secondaryAppendIdColumn,
+    setSecondaryAppendIdColumn,
     setSelectedPrimaryRow,
     currentLookupValue,
     isSecondarySheetOpen,
