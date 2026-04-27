@@ -55,6 +55,8 @@ export default function Home() {
     isProcessing,
     currentTheme,
     selectedPrimaryRow,
+    primaryRowCount,
+    secondaryRowCount,
     currentLookupValue,
     isSecondarySheetOpen,
     isPrimarySheetOpen,
@@ -161,6 +163,8 @@ export default function Home() {
             primaryFileName={primaryFileName}
             secondaryDataHeaders={secondaryDataHeaders}
             secondaryFileName={secondaryFileName}
+            primaryRowCount={primaryRowCount}
+            secondaryRowCount={secondaryRowCount}
             isLoadingFile={isLoadingFile}
             primaryFileInputRef={primaryFileInputRef}
             secondaryFileInputRef={secondaryFileInputRef}

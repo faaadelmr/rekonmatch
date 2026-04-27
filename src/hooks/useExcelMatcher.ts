@@ -170,6 +170,9 @@ export const useExcelMatcher = () => {
   const [primaryLinkColumn, setPrimaryLinkColumn] = useState<string>('');
   const [secondaryLinkColumn, setSecondaryLinkColumn] = useState<string>('');
   
+  const [primaryRowCount, setPrimaryRowCount] = useState<number>(0);
+  const [secondaryRowCount, setSecondaryRowCount] = useState<number>(0);
+  
   const [secondaryResults, setSecondaryResults] = useState<Row[]>([]);
   const [isSecondarySheetOpen, setIsSecondarySheetOpen] = useState(false);
   const [isPrimarySheetOpen, setIsPrimarySheetOpen] = useState(false);
@@ -187,6 +190,7 @@ export const useExcelMatcher = () => {
   const [isLoadingFile, setIsLoadingFile] = useState<'primary' | 'secondary' | false>(false);
   const primaryFileInputRef = useRef<HTMLInputElement>(null);
   const secondaryFileInputRef = useRef<HTMLInputElement>(null);
+  const fileActionRef = useRef<'replace' | 'append'>('replace');
   const { toast } = useToast();
   
   const [currentTheme, setCurrentTheme] = useState('dark');
@@ -205,11 +209,15 @@ export const useExcelMatcher = () => {
       if (pHeaders && pHeaders.length > 0) {
         setPrimaryDataHeaders(pHeaders);
         setPrimaryFileName(await get('primary_fileName') || '');
+        const pRows = await get<Row[]>('primary_rows');
+        if (pRows) setPrimaryRowCount(pRows.length);
         
         const sHeaders = await get<string[]>('secondary_headers');
         if (sHeaders && sHeaders.length > 0) {
           setSecondaryDataHeaders(sHeaders);
           setSecondaryFileName(await get('secondary_fileName') || '');
+          const sRows = await get<Row[]>('secondary_rows');
+          if (sRows) setSecondaryRowCount(sRows.length);
         }
 
         const getFromLocalStorage = (key: string, setter: (value: any) => void, isSet = false, defaultVal: any) => {
@@ -453,8 +461,10 @@ export const useExcelMatcher = () => {
 
         setPrimaryDataHeaders(sHeaders);
         setPrimaryFileName(sName || '');
+        setPrimaryRowCount(sRows ? sRows.length : 0);
         setSecondaryDataHeaders(pHeaders);
         setSecondaryFileName(pName || '');
+        setSecondaryRowCount(pRows ? pRows.length : 0);
 
         const newPrimaryLink = secondaryLinkColumn;
         const newSecondaryLink = primaryLinkColumn;
@@ -508,22 +518,69 @@ export const useExcelMatcher = () => {
             return rowObject;
         });
   
-        await set(`${fileType}_rows`, rows);
-        await set(`${fileType}_headers`, headers);
-        await set(`${fileType}_fileName`, file.name);
+        let finalHeaders = headers;
+        let finalRows = rows;
+        let isReplaced = true;
+        let action = fileActionRef.current;
+
+        if (action === 'append') {
+            const existingHeaders = await get<string[]>(`${fileType}_headers`);
+            if (existingHeaders && existingHeaders.length > 0) {
+                const headersMatch = headers.length === existingHeaders.length && 
+                                     headers.every(h => existingHeaders.includes(h));
+                
+                if (headersMatch) {
+                    const existingRows = await get<Row[]>(`${fileType}_rows`) || [];
+                    
+                    const existingRowStrings = new Set(existingRows.map(r => {
+                         return existingHeaders.map(h => String(r[h] || '')).join('|||');
+                    }));
+                    
+                    let duplicateCount = 0;
+                    const uniqueNewRows = rows.filter(r => {
+                         const str = existingHeaders.map(h => String(r[h] || '')).join('|||');
+                         if (existingRowStrings.has(str)) {
+                             duplicateCount++;
+                             return false;
+                         }
+                         existingRowStrings.add(str);
+                         return true;
+                    });
+                    
+                    if (duplicateCount > 0) {
+                        toast({ title: "Data Disaring", description: `${duplicateCount} baris duplikat diabaikan. ${uniqueNewRows.length} baris baru ditambahkan.` });
+                    }
+                    
+                    finalHeaders = existingHeaders;
+                    finalRows = [...existingRows, ...uniqueNewRows];
+                    isReplaced = false;
+                } else {
+                    toast({ variant: "destructive", title: "Kolom Berbeda", description: "Kolom pada file tidak sama. Data diganti seluruhnya." });
+                }
+            }
+        }
+  
+        await set(`${fileType}_rows`, finalRows);
+        await set(`${fileType}_headers`, finalHeaders);
+        
+        const prevFileName = (await get(`${fileType}_fileName`)) as string || '';
+        const newFileName = isReplaced ? file.name : (prevFileName.includes('(+') ? prevFileName : `${prevFileName} (+ file lain)`);
+        await set(`${fileType}_fileName`, newFileName);
 
         if (fileType === 'primary') {
-            setPrimaryDataHeaders(headers);
-            setPrimaryFileName(file.name);
-            resetDataStates('primary', headers);
+            setPrimaryDataHeaders(finalHeaders);
+            setPrimaryFileName(newFileName);
+            setPrimaryRowCount(finalRows.length);
+            if (isReplaced) resetDataStates('primary', finalHeaders);
         } else {
-            setSecondaryDataHeaders(headers);
-            setSecondaryFileName(file.name);
-            resetDataStates('secondary', headers);
+            setSecondaryDataHeaders(finalHeaders);
+            setSecondaryFileName(newFileName);
+            setSecondaryRowCount(finalRows.length);
+            if (isReplaced) resetDataStates('secondary', finalHeaders);
         }
         
         setAppState('loaded');
-        toast({ title: 'File Berhasil Diproses', description: `${file.name} (${rows.length} baris) telah disimpan di browser Anda.` });
+        toast({ title: isReplaced ? 'File Berhasil Diproses' : 'Data Berhasil Ditambahkan', description: `${isReplaced ? file.name : newFileName} (${finalRows.length} baris total).` });
   
     } catch (error) {
         console.error("Kesalahan memproses file Excel:", error);
@@ -534,7 +591,8 @@ export const useExcelMatcher = () => {
     }
   };
 
-  const handleUploadClick = (fileType: 'primary' | 'secondary') => {
+  const handleUploadClick = (fileType: 'primary' | 'secondary', action: 'replace' | 'append' = 'replace') => {
+    fileActionRef.current = action;
     const ref = fileType === 'primary' ? primaryFileInputRef : secondaryFileInputRef;
     ref.current?.click();
   };
@@ -553,6 +611,8 @@ export const useExcelMatcher = () => {
       setPrimaryFileName('');
       setSecondaryDataHeaders([]);
       setSecondaryFileName('');
+      setPrimaryRowCount(0);
+      setSecondaryRowCount(0);
       resetDataStates('primary', null);
       resetDataStates('secondary', null);
       toast({ title: 'Reset Berhasil', description: 'Semua data dan pengaturan lokal telah dihapus.' });
@@ -947,6 +1007,8 @@ export const useExcelMatcher = () => {
     isProcessing,
     currentTheme,
     selectedPrimaryRow,
+    primaryRowCount,
+    secondaryRowCount,
     setSelectedPrimaryRow,
     currentLookupValue,
     isSecondarySheetOpen,
