@@ -15,6 +15,7 @@ import SecondaryDataDialog from '@/components/app/SecondaryDataDialog';
 import PrimaryDataDialog from '@/components/app/PrimaryDataDialog';
 import ScientificNotationConverterDialog from '@/components/app/ScientificNotationConverterDialog';
 import AppInfoDialog from '@/components/app/AppInfoDialog';
+import UploadValidationDialog from '@/components/app/UploadValidationDialog';
 
 
 export default function Home() {
@@ -97,8 +98,14 @@ export default function Home() {
     handleColumnToConvertToggle,
     handleConvertScientific,
     handleConvertAllScientific,
+    isValidationDialogOpen,
+    setIsValidationDialogOpen,
+    validationMismatchInfo,
+    handleConfirmUpload,
+    handleCancelUpload,
     activeTab,
     setActiveTab,
+    storageEstimate,
   } = useExcelMatcher();
 
   const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
@@ -187,6 +194,7 @@ export default function Home() {
             currentTheme={currentTheme}
             openConvertDialog={() => setIsConvertDialogOpen(true)}
             handleConvertAllScientific={handleConvertAllScientific}
+            storageEstimate={storageEstimate}
           />
         </div>
 
@@ -311,6 +319,14 @@ export default function Home() {
       />
 
       <AppInfoDialog isOpen={isInfoDialogOpen} onOpenChange={setIsInfoDialogOpen} />
+
+      <UploadValidationDialog
+        isOpen={isValidationDialogOpen}
+        onOpenChange={setIsValidationDialogOpen}
+        mismatchInfo={validationMismatchInfo}
+        onConfirm={handleConfirmUpload}
+        onCancel={handleCancelUpload}
+      />
     </main>
   );
 }

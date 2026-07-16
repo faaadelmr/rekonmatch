@@ -1,4 +1,5 @@
 import type {NextConfig} from 'next';
+// @ts-ignore
 import withPWA from 'next-pwa';
 
 const nextConfig: NextConfig = {
@@ -12,11 +13,6 @@ const nextConfig: NextConfig = {
   // Nonaktifkan penggunaan gambar remote untuk mode offline
   images: {
     unoptimized: true, // Gunakan gambar lokal saja, jangan optimasi dari remote
-  },
-  experimental: {
-    serverActions: {
-      allowedActions: ["**/*"],
-    },
   },
   // Hapus konfigurasi serverExternalPackages untuk paket AI karena tidak digunakan dalam mode offline
 };

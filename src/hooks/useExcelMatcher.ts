@@ -24,10 +24,7 @@ function formatDateMMDDYYYY(date: Date): string {
     if (isNaN(date.getTime())) {
         return 'Invalid Date';
     }
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${month}/${day}/${year}`;
+    return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 }
 
 
@@ -129,6 +126,61 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
   }
 };
 
+const autoDetectColumnTypes = (headers: string[], rows: Row[]) => {
+  const detectedTypes: Record<string, ColumnType> = {};
+  const sampleSize = Math.min(rows.length, 20);
+  
+  headers.forEach(col => {
+    let numericCount = 0;
+    let currencyCount = 0;
+    let dateCount = 0;
+    let filledCount = 0;
+
+    for (let i = 0; i < sampleSize; i++) {
+      const val = rows[i]?.[col];
+      if (val === undefined || val === null || val === '') continue;
+      filledCount++;
+
+      const strVal = String(val).trim();
+      
+      if (/^(Rp|IDR|\$)\s*[0-9,.-]+/i.test(strVal) || (/[0-9]/.test(strVal) && (strVal.includes('Rp') || strVal.includes('IDR')))) {
+        currencyCount++;
+        continue;
+      }
+
+      const isExcelSerialDate = typeof val === 'number' && val > 30000 && val < 60000;
+      const isDateStr = /^\d{2,4}[-/.]\d{2}[-/.]\d{2,4}$/.test(strVal) || !isNaN(Date.parse(strVal)) && isNaN(Number(strVal));
+      if (isExcelSerialDate || isDateStr) {
+        dateCount++;
+        continue;
+      }
+
+      if (!isNaN(Number(strVal.replace(/[^0-9.-]+/g, "")))) {
+        numericCount++;
+        continue;
+      }
+    }
+
+    if (filledCount === 0) {
+      detectedTypes[col] = 'text';
+      return;
+    }
+
+    const threshold = filledCount * 0.7;
+    if (currencyCount >= threshold) {
+      detectedTypes[col] = 'currency';
+    } else if (dateCount >= threshold) {
+      detectedTypes[col] = 'date';
+    } else if (numericCount >= threshold) {
+      detectedTypes[col] = 'number';
+    } else {
+      detectedTypes[col] = 'text';
+    }
+  });
+
+  return detectedTypes;
+};
+
 
 type AppState = 'initial' | 'loaded';
 export type ExcelData = {
@@ -204,6 +256,43 @@ export const useExcelMatcher = () => {
   const [fileTypeToConvert, setFileTypeToConvert] = useState<'primary' | 'secondary'>('primary');
   
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+
+  const [storageEstimate, setStorageEstimate] = useState<{
+    usageMB: number;
+    quotaMB: number;
+    percent: number;
+  } | null>(null);
+
+  const updateStorageEstimate = useCallback(async () => {
+    if (typeof window !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        const usage = estimate.usage || 0;
+        const quota = estimate.quota || 1;
+        setStorageEstimate({
+          usageMB: Number((usage / (1024 * 1024)).toFixed(2)),
+          quotaMB: Number((quota / (1024 * 1024)).toFixed(2)),
+          percent: Number(((usage / quota) * 100).toFixed(2))
+        });
+      } catch (e) {
+        console.error("Gagal mendapatkan estimasi kuota penyimpanan:", e);
+      }
+    }
+  }, []);
+
+  const [isValidationDialogOpen, setIsValidationDialogOpen] = useState(false);
+  const [validationMismatchInfo, setValidationMismatchInfo] = useState<{
+    missing: string[];
+    added: string[];
+  } | null>(null);
+  const [pendingUploadData, setPendingUploadData] = useState<{
+    rows: Row[];
+    headers: string[];
+    fileType: 'primary' | 'secondary';
+    fileName: string;
+    action: 'replace' | 'append';
+  } | null>(null);
 
   const loadFromStorage = useCallback(async () => {
     try {
@@ -213,49 +302,52 @@ export const useExcelMatcher = () => {
         setPrimaryFileName(await get('primary_fileName') || '');
         const pRows = await get<Row[]>('primary_rows');
         if (pRows) setPrimaryRowCount(pRows.length);
-        
-        const sHeaders = await get<string[]>('secondary_headers');
-        if (sHeaders && sHeaders.length > 0) {
-          setSecondaryDataHeaders(sHeaders);
-          setSecondaryFileName(await get('secondary_fileName') || '');
-          const sRows = await get<Row[]>('secondary_rows');
-          if (sRows) setSecondaryRowCount(sRows.length);
-        }
+      }
+      
+      const sHeaders = await get<string[]>('secondary_headers');
+      if (sHeaders && sHeaders.length > 0) {
+        setSecondaryDataHeaders(sHeaders);
+        setSecondaryFileName(await get('secondary_fileName') || '');
+        const sRows = await get<Row[]>('secondary_rows');
+        if (sRows) setSecondaryRowCount(sRows.length);
+      }
 
-        const getFromLocalStorage = (key: string, setter: (value: any) => void, isSet = false, defaultVal: any) => {
-          try {
-            const item = localStorage.getItem(key);
-            if (item) {
-              const parsed = JSON.parse(item);
-              setter(isSet ? new Set(parsed) : parsed);
-            } else {
-              setter(defaultVal);
-            }
-          } catch (e) {
-            console.error(`Gagal memuat ${key} dari localStorage`, e);
+      const getFromLocalStorage = (key: string, setter: (value: any) => void, isSet = false, defaultVal: any) => {
+        try {
+          const item = localStorage.getItem(key);
+          if (item) {
+            const parsed = JSON.parse(item);
+            setter(isSet ? new Set(parsed) : parsed);
+          } else {
             setter(defaultVal);
           }
-        };
+        } catch (e) {
+          console.error(`Gagal memuat ${key} dari localStorage`, e);
+          setter(defaultVal);
+        }
+      };
 
-        getFromLocalStorage('rekonMatch_primaryDisplayColumns', setPrimaryDisplayColumns, false, pHeaders);
-        getFromLocalStorage('rekonMatch_secondaryDisplayColumns', setSecondaryDisplayColumns, false, sHeaders || []);
-        getFromLocalStorage('rekonMatch_searchColumns', setSearchColumns, true, new Set());
-        getFromLocalStorage('rekonMatch_secondarySearchColumns', setSecondarySearchColumns, true, new Set());
-        getFromLocalStorage('rekonMatch_searchCriteria', setSearchCriteria, false, {});
-        getFromLocalStorage('rekonMatch_secondarySearchCriteria', setSecondarySearchCriteria, false, {});
-        getFromLocalStorage('rekonMatch_primaryLinkColumn', setPrimaryLinkColumn, false, '');
-        getFromLocalStorage('rekonMatch_secondaryLinkColumn', setSecondaryLinkColumn, false, '');
-        getFromLocalStorage('rekonMatch_columnTypes', setColumnTypes, false, {});
-        getFromLocalStorage('rekonMatch_columnColors', setColumnColors, false, {});
-        getFromLocalStorage('rekonMatch_primaryTemplates', setPrimaryDisplayTemplates, false, {});
-        getFromLocalStorage('rekonMatch_secondaryTemplates', setSecondaryDisplayTemplates, false, {});
-        
+      getFromLocalStorage('rekonMatch_primaryDisplayColumns', setPrimaryDisplayColumns, false, pHeaders || []);
+      getFromLocalStorage('rekonMatch_secondaryDisplayColumns', setSecondaryDisplayColumns, false, sHeaders || []);
+      getFromLocalStorage('rekonMatch_searchColumns', setSearchColumns, true, new Set());
+      getFromLocalStorage('rekonMatch_secondarySearchColumns', setSecondarySearchColumns, true, new Set());
+      getFromLocalStorage('rekonMatch_searchCriteria', setSearchCriteria, false, {});
+      getFromLocalStorage('rekonMatch_secondarySearchCriteria', setSecondarySearchCriteria, false, {});
+      getFromLocalStorage('rekonMatch_primaryLinkColumn', setPrimaryLinkColumn, false, '');
+      getFromLocalStorage('rekonMatch_secondaryLinkColumn', setSecondaryLinkColumn, false, '');
+      getFromLocalStorage('rekonMatch_columnTypes', setColumnTypes, false, {});
+      getFromLocalStorage('rekonMatch_columnColors', setColumnColors, false, {});
+      getFromLocalStorage('rekonMatch_primaryTemplates', setPrimaryDisplayTemplates, false, {});
+      getFromLocalStorage('rekonMatch_secondaryTemplates', setSecondaryDisplayTemplates, false, {});
+      
+      if ((pHeaders && pHeaders.length > 0) || (sHeaders && sHeaders.length > 0)) {
         setAppState('loaded');
       }
+      updateStorageEstimate();
     } catch (error) {
       console.error("Gagal memeriksa IndexedDB saat inisialisasi:", error);
     }
-  }, []);
+  }, [updateStorageEstimate]);
   
   useEffect(() => {
     loadFromStorage();
@@ -267,6 +359,32 @@ export const useExcelMatcher = () => {
     window.addEventListener('themeChanged', updateTheme);
     return () => window.removeEventListener('themeChanged', updateTheme);
   }, []);
+
+  useEffect(() => {
+    // Instantiate the Web Worker
+    workerRef.current = new Worker(new URL('../workers/query.worker.ts', import.meta.url));
+
+    workerRef.current.onmessage = (event: MessageEvent) => {
+      const { type, results, error } = event.data;
+      if (error) {
+        console.error(`Worker error for ${type}:`, error);
+        toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: error });
+        setIsProcessing(false);
+        return;
+      }
+
+      if (type === 'primary') {
+        setFilteredResults(results);
+      } else {
+        setSecondaryFilteredResults(results);
+      }
+      setIsProcessing(false);
+    };
+
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, [toast]);
 
   const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
     const isPrimary = type === 'primary';
@@ -291,96 +409,20 @@ export const useExcelMatcher = () => {
         const dataRows = await get<Row[]>(`${type}_rows`);
         if (!dataRows) {
             toast({ variant: "destructive", title: `Data ${isPrimary ? 'Utama' : 'Sekunder'} Tidak Ditemukan` });
+            setIsProcessing(false);
             return;
         }
   
-        const checkMatch = (value: any, operator: SearchOperator, term: string): boolean => {
-            const val = String(value ?? '').toLowerCase();
-            const t = term.toLowerCase();
-            if (t === '') return false;
-            switch (operator) {
-                case 'contains': return val.includes(t);
-                case 'equals': return val === t;
-                case 'startsWith': return val.startsWith(t);
-                case 'endsWith': return val.endsWith(t);
-                default: return false;
-            }
-        };
-        
-        const criteriaValuesByCol = Object.entries(activeCriteria).reduce((acc, [col, crit]) => {
-            acc[col] = crit.value.split(/\r\n|\n|\r/).map(t => t.trim());
-            return acc;
-        }, {} as Record<string, string[]>);
-        
-        const maxLen = Math.max(0, ...Object.values(criteriaValuesByCol).map(v => v.length));
-        
-        const parsedCriteriaByRow: Record<string, string>[] = [];
-        for (let i = 0; i < maxLen; i++) {
-            const rowCriteria: Record<string, string> = {};
-            for (const col of Object.keys(activeCriteria)) {
-                rowCriteria[col] = criteriaValuesByCol[col]?.[i];
-            }
-            parsedCriteriaByRow.push(rowCriteria);
-        }
-  
-        const finalResults: Row[] = [];
-        const processedCriteria = new Set<string>();
-        const foundRowsTracker = new Set<string>();
-  
-        for (const termRow of parsedCriteriaByRow) {
-            const termKey = JSON.stringify(Object.entries(termRow).sort());
-            const isRowEffectivelyEmpty = Object.values(termRow).every(term => term === '' || term === undefined);
-  
-            if (isRowEffectivelyEmpty) {
-                if (includeEmptyRowsInResults) {
-                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
-                }
-                continue;
-            }
-  
-            if (processedCriteria.has(termKey)) {
-                if (includeEmptyRowsInResults) {
-                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
-                }
-                continue;
-            }
-            
-            processedCriteria.add(termKey);
-  
-            const foundMatches = dataRows.filter(dataRow => 
-                Object.entries(termRow).every(([col, term]) => {
-                    if (term === '' || term === undefined) return true;
-                    return checkMatch(dataRow[col], activeCriteria[col].operator, term);
-                })
-            );
-  
-            if (foundMatches.length > 0) {
-                let newMatchesFound = 0;
-                foundMatches.forEach(match => {
-                    const uniqueKey = JSON.stringify(match);
-                    if (!foundRowsTracker.has(uniqueKey)) {
-                        foundRowsTracker.add(uniqueKey);
-                        finalResults.push({ ...match, __searchCriteria: termRow });
-                        newMatchesFound++;
-                    }
-                });
-  
-                if (newMatchesFound === 0 && includeEmptyRowsInResults) {
-                    finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
-                }
-            } else {
-                const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
-                headers.forEach(header => {
-                    notFoundRow[header] = termRow[header] || '';
-                });
-                finalResults.push(notFoundRow);
-            }
-        }
-        setResults(finalResults);
+        workerRef.current?.postMessage({
+            type,
+            dataRows,
+            activeCriteria,
+            headers,
+            includeEmptyRowsInResults
+        });
     } catch(e) {
         console.error(`Gagal menjalankan kueri ${type}:`, e);
         toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: "Tidak dapat mengambil data dari penyimpanan lokal." });
-    } finally {
         setIsProcessing(false);
     }
   }, [searchCriteria, secondarySearchCriteria, searchColumns, secondarySearchColumns, primaryDataHeaders, secondaryDataHeaders, includeEmptyRowsInResults, toast]);
@@ -492,7 +534,6 @@ export const useExcelMatcher = () => {
     toast({ title: 'Memproses File...', description: `Membaca ${file.name}. Ini mungkin memakan waktu untuk file besar.` });
 
     try {
-        // XLSX sekarang tersedia dari impor statis di atas
         const fileContent = await file.arrayBuffer();
         
         const workbook = XLSX.read(fileContent, { type: 'array', cellDates: false, dense: true });
@@ -502,6 +543,7 @@ export const useExcelMatcher = () => {
         
         if (!json || json.length < 1 || !json[0] || json[0].length === 0) {
           toast({ variant: "destructive", title: "File Kosong atau Format Salah", description: "Pastikan file Excel Anda tidak kosong dan memiliki header." });
+          setIsLoadingFile(false);
           return;
         }
   
@@ -510,7 +552,6 @@ export const useExcelMatcher = () => {
             const rowObject: Row = {};
             headers.forEach((header, index) => {
                 const value = rowArray[index];
-                // Convert boolean values to string representation
                 if (typeof value === 'boolean') {
                     rowObject[header] = value.toString();
                 } else {
@@ -519,6 +560,29 @@ export const useExcelMatcher = () => {
             });
             return rowObject;
         });
+
+        // Schema validation check
+        const existingHeaders = await get<string[]>(`${fileType}_headers`) || [];
+        if (existingHeaders.length > 0) {
+            const missing = existingHeaders.filter(h => !headers.includes(h));
+            const added = headers.filter(h => !existingHeaders.includes(h));
+            const isSchemaMismatch = missing.length > 0 || added.length > 0;
+
+            if (isSchemaMismatch) {
+                setPendingUploadData({
+                    rows,
+                    headers,
+                    fileType,
+                    fileName: file.name,
+                    action: fileActionRef.current
+                });
+                setValidationMismatchInfo({ missing, added });
+                setIsValidationDialogOpen(true);
+                setIsLoadingFile(false);
+                if (event.target) event.target.value = "";
+                return;
+            }
+        }
   
         let finalHeaders = headers;
         let finalRows = rows;
@@ -526,71 +590,63 @@ export const useExcelMatcher = () => {
         let action = fileActionRef.current;
 
         if (action === 'append') {
-            const existingHeaders = await get<string[]>(`${fileType}_headers`);
             if (existingHeaders && existingHeaders.length > 0) {
-                const headersMatch = headers.length === existingHeaders.length && 
-                                     headers.every(h => existingHeaders.includes(h));
-                
-                if (headersMatch) {
-                    const existingRows = await get<Row[]>(`${fileType}_rows`) || [];
-                    const idColumn = fileType === 'primary' ? primaryAppendIdColumn : secondaryAppendIdColumn;
+                const existingRows = await get<Row[]>(`${fileType}_rows`) || [];
+                const idColumn = fileType === 'primary' ? primaryAppendIdColumn : secondaryAppendIdColumn;
 
-                    if (idColumn && headers.includes(idColumn)) {
-                        const rowMap = new Map<string, Row>();
-                        existingRows.forEach(r => {
-                            const idValue = String(r[idColumn] || '');
-                            if (idValue) rowMap.set(idValue, r);
-                        });
+                if (idColumn && headers.includes(idColumn)) {
+                    const rowMap = new Map<string, Row>();
+                    existingRows.forEach(r => {
+                        const idValue = String(r[idColumn] || '');
+                        if (idValue) rowMap.set(idValue, r);
+                    });
 
-                        let updateCount = 0;
-                        let newCount = 0;
+                    let updateCount = 0;
+                    let newCount = 0;
 
-                        rows.forEach(newRow => {
-                            const idValue = String(newRow[idColumn] || '');
-                            if (idValue) {
-                                if (rowMap.has(idValue)) {
-                                    updateCount++;
-                                } else {
-                                    newCount++;
-                                }
-                                rowMap.set(idValue, newRow);
+                    rows.forEach(newRow => {
+                        const idValue = String(newRow[idColumn] || '');
+                        if (idValue) {
+                            if (rowMap.has(idValue)) {
+                                updateCount++;
+                            } else {
+                                newCount++;
                             }
-                        });
-
-                        finalHeaders = existingHeaders;
-                        finalRows = Array.from(rowMap.values());
-                        isReplaced = false;
-
-                        toast({ 
-                            title: "Data Diperbarui", 
-                            description: `${updateCount} baris diperbarui, ${newCount} baris baru ditambahkan (ID: ${idColumn}).` 
-                        });
-                    } else {
-                        const existingRowStrings = new Set(existingRows.map(r => {
-                             return existingHeaders.map(h => String(r[h] || '')).join('|||');
-                        }));
-                        
-                        let duplicateCount = 0;
-                        const uniqueNewRows = rows.filter(r => {
-                             const str = existingHeaders.map(h => String(r[h] || '')).join('|||');
-                             if (existingRowStrings.has(str)) {
-                                 duplicateCount++;
-                                 return false;
-                             }
-                             existingRowStrings.add(str);
-                             return true;
-                        });
-                        
-                        if (duplicateCount > 0) {
-                            toast({ title: "Data Disaring", description: `${duplicateCount} baris duplikat diabaikan. ${uniqueNewRows.length} baris baru ditambahkan.` });
+                            rowMap.set(idValue, newRow);
                         }
-                        
-                        finalHeaders = existingHeaders;
-                        finalRows = [...existingRows, ...uniqueNewRows];
-                        isReplaced = false;
-                    }
+                    });
+
+                    finalHeaders = existingHeaders;
+                    finalRows = Array.from(rowMap.values());
+                    isReplaced = false;
+
+                    toast({ 
+                        title: "Data Diperbarui", 
+                        description: `${updateCount} baris diperbarui, ${newCount} baris baru ditambahkan (ID: ${idColumn}).` 
+                    });
                 } else {
-                    toast({ variant: "destructive", title: "Kolom Berbeda", description: "Kolom pada file tidak sama. Data diganti seluruhnya." });
+                    const existingRowStrings = new Set(existingRows.map(r => {
+                         return existingHeaders.map(h => String(r[h] || '')).join('|||');
+                    }));
+                    
+                    let duplicateCount = 0;
+                    const uniqueNewRows = rows.filter(r => {
+                         const str = existingHeaders.map(h => String(r[h] || '')).join('|||');
+                         if (existingRowStrings.has(str)) {
+                             duplicateCount++;
+                             return false;
+                         }
+                         existingRowStrings.add(str);
+                         return true;
+                    });
+                    
+                    if (duplicateCount > 0) {
+                        toast({ title: "Data Disaring", description: `${duplicateCount} baris duplikat diabaikan. ${uniqueNewRows.length} baris baru ditambahkan.` });
+                    }
+                    
+                    finalHeaders = existingHeaders;
+                    finalRows = [...existingRows, ...uniqueNewRows];
+                    isReplaced = false;
                 }
             }
         }
@@ -606,15 +662,29 @@ export const useExcelMatcher = () => {
             setPrimaryDataHeaders(finalHeaders);
             setPrimaryFileName(newFileName);
             setPrimaryRowCount(finalRows.length);
-            if (isReplaced) resetDataStates('primary', finalHeaders);
+            if (isReplaced) {
+                resetDataStates('primary', finalHeaders);
+                const detected = autoDetectColumnTypes(finalHeaders, finalRows);
+                setColumnTypes(detected);
+                localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(detected));
+            }
         } else {
             setSecondaryDataHeaders(finalHeaders);
             setSecondaryFileName(newFileName);
             setSecondaryRowCount(finalRows.length);
-            if (isReplaced) resetDataStates('secondary', finalHeaders);
+            if (isReplaced) {
+                resetDataStates('secondary', finalHeaders);
+                const detected = autoDetectColumnTypes(finalHeaders, finalRows);
+                setColumnTypes(prev => {
+                    const next = { ...prev, ...detected };
+                    localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(next));
+                    return next;
+                });
+            }
         }
         
         setAppState('loaded');
+        updateStorageEstimate();
         toast({ title: isReplaced ? 'File Berhasil Diproses' : 'Data Berhasil Ditambahkan', description: `${isReplaced ? file.name : newFileName} (${finalRows.length} baris total).` });
   
     } catch (error) {
@@ -624,6 +694,129 @@ export const useExcelMatcher = () => {
         setIsLoadingFile(false);
         if(event.target) event.target.value = "";
     }
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!pendingUploadData) return;
+    const { rows, headers, fileType, fileName, action } = pendingUploadData;
+    setIsLoadingFile(fileType);
+    toast({ title: 'Memproses File...', description: `Menyimpan data ${fileName}.` });
+
+    try {
+        const existingHeaders = await get<string[]>(`${fileType}_headers`) || [];
+        let finalHeaders = headers;
+        let finalRows = rows;
+        let isReplaced = true;
+
+        if (action === 'append') {
+            const existingRows = await get<Row[]>(`${fileType}_rows`) || [];
+            const mergedHeaders = Array.from(new Set([...existingHeaders, ...headers]));
+            const idColumn = fileType === 'primary' ? primaryAppendIdColumn : secondaryAppendIdColumn;
+
+            if (idColumn && mergedHeaders.includes(idColumn)) {
+                const rowMap = new Map<string, Row>();
+                existingRows.forEach(r => {
+                    const idValue = String(r[idColumn] || '');
+                    if (idValue) rowMap.set(idValue, r);
+                });
+
+                let updateCount = 0;
+                let newCount = 0;
+                rows.forEach(newRow => {
+                    const idValue = String(newRow[idColumn] || '');
+                    if (idValue) {
+                        if (rowMap.has(idValue)) {
+                            updateCount++;
+                        } else {
+                            newCount++;
+                        }
+                        rowMap.set(idValue, newRow);
+                    }
+                });
+
+                finalHeaders = mergedHeaders;
+                finalRows = Array.from(rowMap.values());
+                isReplaced = false;
+                toast({ 
+                    title: "Data Diperbarui", 
+                    description: `${updateCount} baris diperbarui, ${newCount} baris baru ditambahkan (ID: ${idColumn}).` 
+                });
+            } else {
+                const existingRowStrings = new Set(existingRows.map(r => {
+                     return existingHeaders.map(h => String(r[h] || '')).join('|||');
+                }));
+                
+                let duplicateCount = 0;
+                const uniqueNewRows = rows.filter(r => {
+                     const str = existingHeaders.map(h => String(r[h] || '')).join('|||');
+                     if (existingRowStrings.has(str)) {
+                         duplicateCount++;
+                         return false;
+                     }
+                     existingRowStrings.add(str);
+                     return true;
+                });
+                
+                if (duplicateCount > 0) {
+                    toast({ title: "Data Disaring", description: `${duplicateCount} baris duplikat diabaikan. ${uniqueNewRows.length} baris baru ditambahkan.` });
+                }
+                
+                finalHeaders = mergedHeaders;
+                finalRows = [...existingRows, ...uniqueNewRows];
+                isReplaced = false;
+            }
+        }
+
+        await set(`${fileType}_rows`, finalRows);
+        await set(`${fileType}_headers`, finalHeaders);
+
+        const prevFileName = (await get(`${fileType}_fileName`)) as string || '';
+        const newFileName = isReplaced ? fileName : (prevFileName.includes('(+') ? prevFileName : `${prevFileName} (+ file lain)`);
+        await set(`${fileType}_fileName`, newFileName);
+
+        if (fileType === 'primary') {
+            setPrimaryDataHeaders(finalHeaders);
+            setPrimaryFileName(newFileName);
+            setPrimaryRowCount(finalRows.length);
+            if (isReplaced) {
+                resetDataStates('primary', finalHeaders);
+                const detected = autoDetectColumnTypes(finalHeaders, finalRows);
+                setColumnTypes(detected);
+                localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(detected));
+            }
+        } else {
+            setSecondaryDataHeaders(finalHeaders);
+            setSecondaryFileName(newFileName);
+            setSecondaryRowCount(finalRows.length);
+            if (isReplaced) {
+                resetDataStates('secondary', finalHeaders);
+                const detected = autoDetectColumnTypes(finalHeaders, finalRows);
+                setColumnTypes(prev => {
+                    const next = { ...prev, ...detected };
+                    localStorage.setItem('rekonMatch_columnTypes', JSON.stringify(next));
+                    return next;
+                });
+            }
+        }
+
+        setAppState('loaded');
+        updateStorageEstimate();
+        toast({ title: isReplaced ? 'File Berhasil Diproses' : 'Data Berhasil Ditambahkan', description: `${isReplaced ? fileName : newFileName} (${finalRows.length} baris total).` });
+    } catch (error) {
+        console.error("Kesalahan menyimpan file:", error);
+        toast({ variant: "destructive", title: "Kesalahan Menyimpan", description: `Gagal memproses data.` });
+    } finally {
+        setIsLoadingFile(false);
+        setPendingUploadData(null);
+        setValidationMismatchInfo(null);
+        setIsValidationDialogOpen(false);
+    }
+  };
+
+  const handleCancelUpload = () => {
+    setPendingUploadData(null);
+    setValidationMismatchInfo(null);
+    setIsValidationDialogOpen(false);
   };
 
   const handleUploadClick = (fileType: 'primary' | 'secondary', action: 'replace' | 'append' = 'replace') => {
@@ -652,6 +845,7 @@ export const useExcelMatcher = () => {
       setSecondaryAppendIdColumn('');
       resetDataStates('primary', null);
       resetDataStates('secondary', null);
+      updateStorageEstimate();
       toast({ title: 'Reset Berhasil', description: 'Semua data dan pengaturan lokal telah dihapus.' });
     } catch (error) {
       console.error("Gagal mereset IndexedDB:", error);
@@ -1088,6 +1282,13 @@ export const useExcelMatcher = () => {
     handleColumnToConvertToggle,
     handleConvertScientific,
     handleConvertAllScientific,
+    isValidationDialogOpen,
+    setIsValidationDialogOpen,
+    validationMismatchInfo,
+    handleConfirmUpload,
+    handleCancelUpload,
+    storageEstimate,
+    updateStorageEstimate,
   };
 };
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, FileText, FileCheck2, ArrowRightLeft, Upload, HeartHandshake, Flower2, Link2, Fingerprint } from "lucide-react";
+import { Loader2, FileText, FileCheck2, ArrowRightLeft, Upload, HeartHandshake, Flower2, Link2, Fingerprint, HardDrive } from "lucide-react";
 
 interface DataSourceManagerProps {
   primaryDataHeaders: string[];
@@ -33,6 +33,11 @@ interface DataSourceManagerProps {
   currentTheme: string;
   openConvertDialog: () => void;
   handleConvertAllScientific: () => Promise<void>;
+  storageEstimate?: {
+    usageMB: number;
+    quotaMB: number;
+    percent: number;
+  } | null;
 }
 
 export default function DataSourceManager({
@@ -57,7 +62,8 @@ export default function DataSourceManager({
   setPrimaryLinkColumn,
   secondaryLinkColumn,
   setSecondaryLinkColumn,
-  currentTheme
+  currentTheme,
+  storageEstimate
 }: DataSourceManagerProps) {
   const hasPrimaryData = primaryDataHeaders.length > 0;
   const hasSecondaryData = secondaryDataHeaders.length > 0;
@@ -219,6 +225,19 @@ export default function DataSourceManager({
               </Select>
             </div>
           </CardContent>
+        </>
+      )}
+      {storageEstimate && (
+        <>
+          <Separator />
+          <div className="px-6 py-4 flex items-center justify-between text-xs text-muted-foreground bg-muted/20">
+            <span className="flex items-center gap-1.5 font-medium">
+              <HardDrive className="h-4 w-4 text-primary" /> Penggunaan Lokal (IndexedDB)
+            </span>
+            <span className="font-mono">
+              {storageEstimate.usageMB} MB / {storageEstimate.quotaMB} MB ({storageEstimate.percent}%)
+            </span>
+          </div>
         </>
       )}
     </Card>

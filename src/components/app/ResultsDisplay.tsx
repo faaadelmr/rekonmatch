@@ -58,7 +58,7 @@ export default function ResultsDisplay({
 
     if (row.__isDuplicate) {
       return (
-        <TableRow key={`${isSecondary ? 's' : 'p'}-dup-${index}`} className="bg-yellow-500/20 hover:bg-yellow-500/30">
+        <TableRow key={`${isSecondary ? 's' : 'p'}-dup-${index}`} className="bg-yellow-500/20 hover:bg-yellow-500/30" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 45px' }}>
           <TableCell></TableCell>
           <TableCell colSpan={columns.length} className="text-yellow-700 dark:text-yellow-300">
             Kriteria pencarian ini adalah duplikat dari yang sudah ditampilkan.
@@ -73,6 +73,7 @@ export default function ResultsDisplay({
         className={cn(
           row.__isNotFound && "bg-red-500/20 hover:bg-red-500/30",
         )}
+        style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 45px' }}
       >
         <TableCell>
           {!row.__isNotFound && !row.__isEmpty && isLinkingEnabled && linkColumn && targetLinkColumn && (

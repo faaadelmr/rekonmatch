@@ -45,11 +45,18 @@ export default function RootLayout({
       <body className="font-body antialiased">
         {children}
         <Toaster />
-        <footer className="bottom-0 left-0 w-full p-4 text-center">
-         <p className="text-xs text-muted-foreground">
-           &copy; {new Date().getFullYear()} <a href="https://faaadelmr.pages.dev" className="font-bold text-primary hover:text-primary/80">faaadelmr</a>
-         </p>
-       </footer>
+        <footer className="w-full py-6 mt-12 border-t bg-card/30 backdrop-blur-md">
+          <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-muted-foreground">
+              &copy; {new Date().getFullYear()} <a href="https://faaadelmr.dev" target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline transition-all">faaadelmr.dev</a>. Hak Cipta Dilindungi.
+            </p>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Dibuat dengan</span>
+              <span className="text-red-500 animate-pulse text-sm">❤️</span>
+              <span>untuk Rekonsiliasi Finansial</span>
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );

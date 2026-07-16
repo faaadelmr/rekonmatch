@@ -1,4 +1,5 @@
 import type {NextConfig} from 'next';
+// @ts-ignore
 import withPWA from 'next-pwa';
 
 const nextConfig: NextConfig = {
@@ -12,17 +13,16 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true, // Gunakan gambar lokal saja, jangan optimasi dari remote
   },
-  experimental: {
-    serverActions: {
-      allowedActions: ["**/*"],
-    },
-  },
   // Hapus referensi ke paket AI karena tidak digunakan dalam mode offline
 };
 
-export default withPWA({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
-})(nextConfig);
+const isDev = process.env.NODE_ENV === 'development';
+
+export default isDev 
+  ? nextConfig 
+  : withPWA({
+      dest: 'public',
+      register: true,
+      skipWaiting: true,
+      disable: false,
+    })(nextConfig);
