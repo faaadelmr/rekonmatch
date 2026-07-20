@@ -28,7 +28,7 @@ function formatDateMMDDYYYY(date: Date): string {
 }
 
 
-export function scientificToFull(value: any): string | number | bigint {
+export function scientificToFull(value: any): string | number {
     let numStr = String(value);
 
     // Only process if it's likely scientific notation.
@@ -61,13 +61,9 @@ export function scientificToFull(value: any): string | number | bigint {
     
     numStr = sign + numStr.replace(/\.$/, '');
 
-    try {
-        // Use BigInt for whole numbers to maintain precision
-        if (!numStr.includes('.')) {
-            return BigInt(numStr);
-        }
-    } catch (e) {
-        // Fallback for any unexpected BigInt conversion error
+    // Always return as string for whole large numbers to avoid BigInt DataCloneError
+    // BigInt cannot be sent via postMessage (Structured Clone Algorithm)
+    if (!numStr.includes('.')) {
         return numStr;
     }
     
@@ -83,9 +79,6 @@ export function scientificToFull(value: any): string | number | bigint {
 
 export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'date' = 'text'): string => {
   if (value === null || value === undefined || value === '') return '';
-  if (typeof value === 'bigint') {
-    return value.toString();
-  }
   
   switch (type) {
     case 'date':
@@ -240,12 +233,16 @@ export const useExcelMatcher = () => {
   const [secondaryDisplayTemplates, setSecondaryDisplayTemplates] = useState<Record<string, DisplayTemplate>>({});
   const [newSecondaryTemplateName, setNewSecondaryTemplateName] = useState('');
   
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isPrimaryProcessing, setIsPrimaryProcessing] = useState(false);
+  const [isSecondaryProcessing, setIsSecondaryProcessing] = useState(false);
+  const isProcessing = isPrimaryProcessing || isSecondaryProcessing;
   const [isLoadingFile, setIsLoadingFile] = useState<'primary' | 'secondary' | false>(false);
   const primaryFileInputRef = useRef<HTMLInputElement>(null);
   const secondaryFileInputRef = useRef<HTMLInputElement>(null);
   const fileActionRef = useRef<'replace' | 'append'>('replace');
   const { toast } = useToast();
+  // Keep toastRef in sync with latest toast function without causing re-renders
+  useEffect(() => { toastRef.current = toast; }, [toast]);
   
   const [currentTheme, setCurrentTheme] = useState('dark');
   const [includeEmptyRowsInResults, setIncludeEmptyRowsInResults] = useState(true);
@@ -257,6 +254,8 @@ export const useExcelMatcher = () => {
   
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  // Use a ref for toast to avoid worker useEffect re-running on every toast reference change
+  const toastRef = useRef(toast);
 
   const [storageEstimate, setStorageEstimate] = useState<{
     usageMB: number;
@@ -361,30 +360,34 @@ export const useExcelMatcher = () => {
   }, []);
 
   useEffect(() => {
-    // Instantiate the Web Worker
+    // Instantiate the Web Worker only once on mount.
+    // Do NOT include `toast` in deps — use toastRef.current to avoid
+    // terminating/recreating the worker on every toast reference change (race condition).
     workerRef.current = new Worker(new URL('../workers/query.worker.ts', import.meta.url));
 
     workerRef.current.onmessage = (event: MessageEvent) => {
       const { type, results, error } = event.data;
       if (error) {
         console.error(`Worker error for ${type}:`, error);
-        toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: error });
-        setIsProcessing(false);
+        toastRef.current({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: error });
+        if (type === 'primary') setIsPrimaryProcessing(false);
+        else setIsSecondaryProcessing(false);
         return;
       }
 
       if (type === 'primary') {
         setFilteredResults(results);
+        setIsPrimaryProcessing(false);
       } else {
         setSecondaryFilteredResults(results);
+        setIsSecondaryProcessing(false);
       }
-      setIsProcessing(false);
     };
 
     return () => {
       workerRef.current?.terminate();
     };
-  }, [toast]);
+  }, []); // empty deps: worker lives for the lifetime of this hook instance
 
   const runQuery = useCallback(async (type: 'primary' | 'secondary') => {
     const isPrimary = type === 'primary';
@@ -392,6 +395,7 @@ export const useExcelMatcher = () => {
     const searchCols = isPrimary ? searchColumns : secondarySearchColumns;
     const headers = isPrimary ? primaryDataHeaders : secondaryDataHeaders;
     const setResults = isPrimary ? setFilteredResults : setSecondaryFilteredResults;
+    const setProcessing = isPrimary ? setIsPrimaryProcessing : setIsSecondaryProcessing;
   
     const activeCriteria = Object.fromEntries(
         Object.entries(criteria).filter(([col, crit]) => searchCols.has(col) && crit?.value.trim())
@@ -402,30 +406,46 @@ export const useExcelMatcher = () => {
         setResults([]);
         return;
     }
+
+    // Guard: if worker is not ready, do not proceed
+    if (!workerRef.current) {
+        console.warn(`[runQuery] Worker belum siap untuk kueri ${type}, dilewati.`);
+        return;
+    }
     
-    setIsProcessing(true);
+    setProcessing(true);
   
     try {
         const dataRows = await get<Row[]>(`${type}_rows`);
         if (!dataRows) {
-            toast({ variant: "destructive", title: `Data ${isPrimary ? 'Utama' : 'Sekunder'} Tidak Ditemukan` });
-            setIsProcessing(false);
+            toastRef.current({ variant: "destructive", title: `Data ${isPrimary ? 'Utama' : 'Sekunder'} Tidak Ditemukan` });
+            setProcessing(false);
             return;
         }
+
+        // Sanitize rows: convert any BigInt values to string to prevent DataCloneError
+        const safeRows = dataRows.map(row => {
+            const safeRow: Row = {};
+            for (const key in row) {
+                const val = row[key];
+                safeRow[key] = typeof val === 'bigint' ? val.toString() : val;
+            }
+            return safeRow;
+        });
   
-        workerRef.current?.postMessage({
+        workerRef.current.postMessage({
             type,
-            dataRows,
+            dataRows: safeRows,
             activeCriteria,
             headers,
             includeEmptyRowsInResults
         });
     } catch(e) {
         console.error(`Gagal menjalankan kueri ${type}:`, e);
-        toast({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: "Tidak dapat mengambil data dari penyimpanan lokal." });
-        setIsProcessing(false);
+        toastRef.current({ variant: "destructive", title: "Gagal Menjalankan Kueri", description: "Tidak dapat mengambil data dari penyimpanan lokal." });
+        setProcessing(false);
     }
-  }, [searchCriteria, secondarySearchCriteria, searchColumns, secondarySearchColumns, primaryDataHeaders, secondaryDataHeaders, includeEmptyRowsInResults, toast]);
+  }, [searchCriteria, secondarySearchCriteria, searchColumns, secondarySearchColumns, primaryDataHeaders, secondaryDataHeaders, includeEmptyRowsInResults]);
 
 
   useEffect(() => {
@@ -1111,7 +1131,7 @@ export const useExcelMatcher = () => {
       return;
     }
     
-    setIsProcessing(true);
+    setIsPrimaryProcessing(true);
     toast({ title: 'Memulai Konversi...', description: 'Proses ini mungkin memakan waktu.' });
 
     try {
@@ -1141,12 +1161,13 @@ export const useExcelMatcher = () => {
         console.error("Gagal mengonversi notasi ilmiah:", e);
         toast({ variant: "destructive", title: "Gagal Mengonversi", description: "Terjadi kesalahan saat memproses data." });
     } finally {
-        setIsProcessing(false);
+        setIsPrimaryProcessing(false);
     }
   };
 
   const handleConvertAllScientific = async () => {
-    setIsProcessing(true);
+    setIsPrimaryProcessing(true);
+    setIsSecondaryProcessing(true);
     toast({ title: 'Memindai & Mengonversi Semua Data...', description: 'Ini mungkin memakan waktu cukup lama.' });
 
     try {
@@ -1177,7 +1198,8 @@ export const useExcelMatcher = () => {
         console.error("Gagal mengonversi semua notasi ilmiah:", e);
         toast({ variant: "destructive", title: "Gagal Konversi Global", description: "Terjadi kesalahan saat memproses data." });
     } finally {
-        setIsProcessing(false);
+        setIsPrimaryProcessing(false);
+        setIsSecondaryProcessing(false);
     }
 };
 
