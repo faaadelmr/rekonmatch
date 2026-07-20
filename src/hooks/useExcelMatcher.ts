@@ -100,12 +100,62 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
         // fall through
       }
       return String(value);
-    case 'number':
-      const numValue = Number(String(value).replace(/[^0-9.-]+/g,""));
+    case 'number': {
+      if (typeof value === 'number') return String(value);
+      let cleanNumStr = String(value).trim();
+      if (cleanNumStr.includes('.') && cleanNumStr.includes(',')) {
+        if (cleanNumStr.indexOf('.') < cleanNumStr.indexOf(',')) {
+          cleanNumStr = cleanNumStr.replace(/\./g, '').replace(',', '.');
+        } else {
+          cleanNumStr = cleanNumStr.replace(/,/g, '');
+        }
+      } else if (cleanNumStr.includes(',')) {
+        const parts = cleanNumStr.split(',');
+        if (parts[parts.length - 1].length === 3) {
+          cleanNumStr = cleanNumStr.replace(/,/g, '');
+        } else {
+          cleanNumStr = cleanNumStr.replace(',', '.');
+        }
+      } else if (cleanNumStr.includes('.')) {
+        const parts = cleanNumStr.split('.');
+        if (parts[parts.length - 1].length === 3) {
+          cleanNumStr = cleanNumStr.replace(/\./g, '');
+        }
+      }
+      const numValue = Number(cleanNumStr.replace(/[^0-9.-]+/g,""));
       if (isNaN(numValue)) return String(value);
       return String(numValue);
-    case 'currency':
-      const currencyValue = Number(String(value).replace(/[^0-9.-]+/g,""));
+    }
+    case 'currency': {
+      if (typeof value === 'number') {
+        return new Intl.NumberFormat('id-ID', {
+          style: 'currency',
+          currency: 'IDR',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(value);
+      }
+      let cleanCurrStr = String(value).trim().replace(/^(Rp|IDR|\$)\s*/i, '');
+      if (cleanCurrStr.includes('.') && cleanCurrStr.includes(',')) {
+        if (cleanCurrStr.indexOf('.') < cleanCurrStr.indexOf(',')) {
+          cleanCurrStr = cleanCurrStr.replace(/\./g, '').replace(',', '.');
+        } else {
+          cleanCurrStr = cleanCurrStr.replace(/,/g, '');
+        }
+      } else if (cleanCurrStr.includes(',')) {
+        const parts = cleanCurrStr.split(',');
+        if (parts[parts.length - 1].length === 3) {
+          cleanCurrStr = cleanCurrStr.replace(/,/g, '');
+        } else {
+          cleanCurrStr = cleanCurrStr.replace(',', '.');
+        }
+      } else if (cleanCurrStr.includes('.')) {
+        const parts = cleanCurrStr.split('.');
+        if (parts[parts.length - 1].length === 3) {
+          cleanCurrStr = cleanCurrStr.replace(/\./g, '');
+        }
+      }
+      const currencyValue = Number(cleanCurrStr.replace(/[^0-9.-]+/g,""));
       if (isNaN(currencyValue)) return String(value);
       return new Intl.NumberFormat('id-ID', {
         style: 'currency',
@@ -113,6 +163,7 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }).format(currencyValue);
+    }
     case 'text':
     default:
       return String(value);
@@ -121,13 +172,20 @@ export const formatCell = (value: any, type: 'text' | 'number' | 'currency' | 'd
 
 const autoDetectColumnTypes = (headers: string[], rows: Row[]) => {
   const detectedTypes: Record<string, ColumnType> = {};
-  const sampleSize = Math.min(rows.length, 20);
+  const sampleSize = Math.min(rows.length, 50);
   
   headers.forEach(col => {
     let numericCount = 0;
     let currencyCount = 0;
     let dateCount = 0;
+    let textCount = 0;
     let filledCount = 0;
+
+    const colLower = col.toLowerCase();
+    
+    // Heuristic based on column name: skip auto numeric/currency for ID, Code, Batch, Invoice columns
+    const isIdOrCodeColumn = /(?:no|id|code|nik|npwp|phone|telp|batch|invoice|va|rekening|account|ref|sec_key)/i.test(colLower) && 
+                             !/(?:amount|nominal|total|paid|price|biaya|saldo|tarif|fee|charge|sum|val)/i.test(colLower);
 
     for (let i = 0; i < sampleSize; i++) {
       const val = rows[i]?.[col];
@@ -136,22 +194,39 @@ const autoDetectColumnTypes = (headers: string[], rows: Row[]) => {
 
       const strVal = String(val).trim();
       
-      if (/^(Rp|IDR|\$)\s*[0-9,.-]+/i.test(strVal) || (/[0-9]/.test(strVal) && (strVal.includes('Rp') || strVal.includes('IDR')))) {
-        currencyCount++;
-        continue;
-      }
-
+      // 1. Check Date
       const isExcelSerialDate = typeof val === 'number' && val > 30000 && val < 60000;
-      const isDateStr = /^\d{2,4}[-/.]\d{2}[-/.]\d{2,4}$/.test(strVal) || !isNaN(Date.parse(strVal)) && isNaN(Number(strVal));
+      const isDateStr = /^\d{2,4}[-/.]\d{2}[-/.]\d{2,4}$/.test(strVal) || (!isNaN(Date.parse(strVal)) && isNaN(Number(strVal)) && strVal.length > 5);
       if (isExcelSerialDate || isDateStr) {
         dateCount++;
         continue;
       }
 
-      if (!isNaN(Number(strVal.replace(/[^0-9.-]+/g, "")))) {
-        numericCount++;
+      // 2. Check Currency
+      const hasCurrencySymbol = /^(Rp|IDR|\$)\s*/i.test(strVal) || strVal.includes('Rp') || strVal.includes('IDR');
+      if (hasCurrencySymbol) {
+        currencyCount++;
         continue;
       }
+
+      // 3. Check Numeric
+      const cleanVal = strVal.replace(/^(Rp|IDR|\$)\s*/i, '').replace(/,/g, '');
+      const isNum = typeof val === 'number' || (!isNaN(Number(cleanVal)) && cleanVal !== '');
+      
+      if (isNum) {
+        if (isIdOrCodeColumn || (cleanVal.length > 10 && !cleanVal.includes('.'))) {
+          textCount++;
+        } else {
+          if (/(?:amount|nominal|total|paid|price|biaya|saldo|tarif|fee|charge|sum|val|value)/i.test(colLower)) {
+            currencyCount++;
+          } else {
+            numericCount++;
+          }
+        }
+        continue;
+      }
+
+      textCount++;
     }
 
     if (filledCount === 0) {
@@ -159,7 +234,7 @@ const autoDetectColumnTypes = (headers: string[], rows: Row[]) => {
       return;
     }
 
-    const threshold = filledCount * 0.7;
+    const threshold = filledCount * 0.6;
     if (currencyCount >= threshold) {
       detectedTypes[col] = 'currency';
     } else if (dateCount >= threshold) {

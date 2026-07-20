@@ -50,11 +50,6 @@ export default function RootLayout({
             <p className="text-xs text-muted-foreground">
               &copy; {new Date().getFullYear()} <a href="https://faaadelmr.dev" target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline transition-all">faaadelmr.dev</a>. Hak Cipta Dilindungi.
             </p>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>Dibuat dengan</span>
-              <span className="text-red-500 animate-pulse text-sm">❤️</span>
-              <span>untuk Rekonsiliasi Finansial</span>
-            </div>
           </div>
         </footer>
       </body>
