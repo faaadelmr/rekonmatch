@@ -4,7 +4,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Info } from "lucide-react";
+import { ShieldAlert, AlertTriangle } from "lucide-react";
 
 interface AppInfoDialogProps {
   isOpen: boolean;
@@ -17,85 +17,95 @@ export default function AppInfoDialog({ isOpen, onOpenChange }: AppInfoDialogPro
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-2xl">
-            <Info className="w-6 h-6" />
-            Keamanan & Privasi Data RekonMatch
+            <ShieldAlert className="w-6 h-6 text-primary" />
+            Transparansi Arsitektur & Batasan Keamanan Data
           </DialogTitle>
           <DialogDescription>
-            Penjelasan transparan mengenai bagaimana aplikasi ini menangani data rahasia Anda.
+            Penjelasan jujur dan objektif mengenai cara kerja aplikasi serta batasan keamanan pada perangkat Anda.
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh] p-1 pr-4">
             <div className="prose prose-sm dark:prose-invert space-y-6 text-foreground/90 pr-2">
                 <div>
-                    <h2 className="font-semibold text-lg mb-2">1. Apakah Proses Pengolahan Data Excel Ini Aman?</h2>
-                    <p><strong className="text-primary">Ya, sangat aman.</strong></p>
+                    <h2 className="font-semibold text-lg mb-2">1. Bagaimana RekonMatch Memproses Data Anda?</h2>
                     <p>
-                        Keamanan aplikasi ini didasarkan pada prinsip fundamental:{" "}
-                        <strong className="font-semibold">semua pemrosesan data terjadi sepenuhnya di dalam browser web Anda, di komputer Anda sendiri.</strong>
+                        Aplikasi ini dirancang murni sebagai utilitas <em>client-side</em>:
                     </p>
-                    <ul className="list-disc space-y-1 pl-5">
+                    <ul className="list-disc space-y-1.5 pl-5 text-sm">
                         <li>
-                            <strong>Tidak Ada Server</strong>: Aplikasi ini tidak memiliki komponen <em>backend</em> atau server yang menerima atau mengolah data Anda.
+                            <strong>Tanpa Server Backend</strong>: RekonMatch tidak memiliki server basis data, API penampung, atau layanan backend untuk menyimpan data Excel Anda.
                         </li>
                         <li>
-                            <strong>Teknologi Sisi Klien</strong>: Saat Anda "mengunggah" file Excel, file tersebut tidak dikirim ke mana pun. Browser Anda (seperti Chrome, Firefox, dll.) menggunakan pustaka JavaScript (`xlsx.js`) untuk membaca file langsung dari memori lokal komputer Anda.
+                            <strong>Pemrosesan Memori Lokal</strong>: Berkas Excel dibaca dan diproses langsung di peramban komputer Anda menggunakan pustaka JavaScript (<code>xlsx</code> dan Web Worker).
                         </li>
                         <li>
-                            <strong>Penyimpanan Lokal</strong>: Data yang sudah dibaca kemudian disimpan sementara di dalam penyimpanan internal browser Anda yang disebut <strong>IndexedDB</strong>. Data ini hanya dapat diakses oleh Anda di browser yang sama dan tidak dapat diakses oleh situs web lain atau oleh pihak luar.
+                            <strong>Penyimpanan Browser (IndexedDB)</strong>: Data yang diolah disimpan pada memori internal peramban Anda agar dapat digunakan kembali tanpa perlu unggah ulang setiap saat.
                         </li>
                     </ul>
-                    <p>Intinya, aplikasi ini berfungsi seperti aplikasi desktop tradisional (misalnya, Microsoft Excel itu sendiri), tetapi berjalan di dalam "wadah" browser Anda.</p>
                 </div>
 
                 <div>
-                    <h2 className="font-semibold text-lg mb-2">2. Apakah Data yang Diunggah Benar-Benar Offline dan Tidak Ada Proses Upload Data ke Luar?</h2>
-                    <p><strong className="font-semibold">Benar. Tidak ada data yang diunggah ke luar aplikasi.</strong></p>
-                    <p>
-                        Istilah "Unggah" pada tombol mungkin sedikit menimbulkan salah paham. Dalam konteks aplikasi ini, "Unggah" berarti{" "}
-                        <strong>"memuat file dari disk lokal Anda ke dalam memori browser"</strong>.
+                    <h2 className="font-semibold text-lg mb-2">2. Apakah Ada Data yang Dikirim ke Pihak Ketiga?</h2>
+                    <p className="text-sm">
+                        Secara desain kode, <strong>tidak ada telemetri, pelacak (analytics), atau pengiriman baris data ke internet</strong>. Anda bahkan dapat memutuskan sambungan internet (offline) setelah halaman termuat dan aplikasi akan tetap beroperasi normal.
                     </p>
-                    <ul className="list-disc space-y-1 pl-5">
+                </div>
+
+                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                    <h2 className="font-semibold text-base mb-2 flex items-center gap-2 text-amber-400">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        3. Batasan Keamanan & Tanggung Jawab Perangkat (Penting)
+                    </h2>
+                    <p className="text-sm leading-relaxed text-amber-300/90 mb-2">
+                        Meskipun aplikasi ini tidak mengirimkan data ke jaringan luar, <strong>kami tidak dapat menjamin data Anda 100% aman tanpa risiko</strong>. Keamanan data pada lingkungan lokal tetap memiliki kerentanan yang berada di luar kendali aplikasi ini:
+                    </p>
+                    <ul className="list-disc space-y-1.5 pl-5 text-xs text-amber-200/80">
                         <li>
-                            <strong>100% Offline</strong>: Setelah aplikasi dimuat untuk pertama kalinya, semua fungsi inti—termasuk memuat file, memfilter, mencari, dan menampilkan hasil—berfungsi penuh tanpa memerlukan koneksi internet.
+                            <strong>Ekstensi Peramban (Browser Extensions)</strong>: Ekstensi pihak ketiga yang Anda pasang di browser (misalnya penerjemah, pengelola unduhan, atau extension tak terpercaya) sering kali memiliki izin membaca isi DOM atau penyimpanan lokal.
                         </li>
                         <li>
-                            <strong>Tidak Ada Komunikasi Jaringan</strong>: Saat Anda memproses file, tidak ada satu pun baris atau sel dari data Anda yang dikirim melalui jaringan internet. Anda dapat membuktikannya sendiri dengan memutuskan koneksi internet setelah aplikasi dimuat dan semua fitur akan tetap berjalan seperti biasa.
+                            <strong>Komputer Bersama / Publik</strong>: Jika perangkat digunakan oleh banyak orang (komputer kantor bersama atau warnet), pengguna lain yang membuka browser yang sama dapat melihat data di IndexedDB.
+                        </li>
+                        <li>
+                            <strong>Malware / Spyware Lokal</strong>: Jika komputer terinfeksi virus, pencuri data (info-stealer), atau keylogger, data di memori komputer Anda tetap berisiko disadap.
+                        </li>
+                        <li>
+                            <strong>Langkah Pencegahan</strong>: Gunakan tombol <strong>Mulai Ulang</strong> untuk mengosongkan seluruh memori lokal setelah selesai bekerja, terutama jika menggunakan perangkat bersama.
                         </li>
                     </ul>
                 </div>
-                
+
                 <div>
-                    <h2 className="font-semibold text-lg mb-2">3. Apakah Aplikasi Ini Mengumpulkan Data untuk Kepentingan Lain?</h2>
-                    <p><strong className="font-semibold">Tidak, sama sekali tidak.</strong></p>
-                    <p>
-                        Aplikasi <strong>RekonMatch</strong> dirancang sebagai sebuah <em>utilitas</em> atau alat bantu murni.
+                    <h2 className="font-semibold text-lg mb-2">4. Mengapa Data Tersimpan Bisa Hilang & Solusinya?</h2>
+                    <p className="text-sm">
+                        IndexedDB merupakan memori browser yang dapat dihapus secara otomatis dalam kondisi berikut:
                     </p>
-                    <ul className="list-disc space-y-1 pl-5">
+                    <ul className="list-disc space-y-1.5 pl-5 text-sm">
                         <li>
-                            <strong>Tidak Ada Pengumpulan Data (Data Collection)</strong>: Aplikasi ini tidak mengumpulkan, menyimpan, atau mengirimkan informasi apa pun dari file Excel Anda.
+                            <strong>Mode Penyamaran (Incognito)</strong>: Seluruh memori akan langsung dihapus bersih begitu jendela peramban ditutup.
                         </li>
                         <li>
-                            <strong>Tidak Ada Analitik atau Pelacakan</strong>: Tidak ada kode pelacakan (seperti Google Analytics) atau mekanisme analitik lain yang memantau bagaimana Anda menggunakan aplikasi atau data apa yang Anda masukkan.
+                            <strong>Pembersihan Riwayat (Clear Cache/Storage)</strong>: Menghapus riwayat atau cookies peramban akan ikut membersihkan database lokal RekonMatch.
                         </li>
                         <li>
-                            <strong>Fokus pada Privasi</strong>: Tujuan aplikasi ini adalah untuk menyediakan alat yang andal dan aman. Privasi data Anda adalah absolut. Apa yang ada di komputer Anda, tetap ada di komputer Anda.
+                            <strong>Saran Praktis</strong>: Manfaatkan tombol <strong>Cadangkan</strong> (.rekon) di bagian bawah panel Sumber Data untuk mengarsipkan setelan dan data penting Anda ke berkas lokal komputer.
                         </li>
                     </ul>
                 </div>
 
                 <hr className="border-border" />
                 
-                <div className="text-center text-sm text-muted-foreground">
-                    <p className="font-semibold">Kesimpulan:</p>
+                <div className="text-xs text-muted-foreground leading-relaxed">
+                    <p className="font-semibold mb-1">Pernyataan Penafian (Disclaimer):</p>
                     <p>
-                        Anda dapat menggunakan aplikasi RekonMatch dengan keyakinan penuh bahwa data rahasia Anda akan tetap rahasia. Arsitektur aplikasi ini secara inheren aman karena sifatnya yang sepenuhnya berjalan di sisi klien (<em>client-side</em>) dan offline.
+                        Aplikasi RekonMatch disediakan sebagaimana adanya (<em>as is</em>) sebagai alat bantu komputasi lokal. Pengguna bertanggung jawab penuh atas keamanan fisik perangkat, kebersihan peramban dari malware/ekstensi berbahaya, serta kebijakan penanganan data rahasia masing-masing institusi.
                     </p>
                 </div>
             </div>
         </ScrollArea>
         <DialogFooter>
           <DialogClose asChild>
-            <Button type="button">Mengerti</Button>
+            <Button type="button">Saya Mengerti & Setuju</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

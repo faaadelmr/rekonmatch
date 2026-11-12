@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ListFilter, ArrowUp, ArrowDown, Type, Palette, Save, Heart, CheckSquare, Trash2, Search, Sparkle, Loader2 } from "lucide-react";
+import { ListFilter, ArrowUp, ArrowDown, Type, Palette, Save, Heart, CheckSquare, Trash2, Search, Sparkle, Loader2, RotateCcw } from "lucide-react";
 import { type ColumnType, type SearchOperator, type SearchCriterion, type DisplayTemplate } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ interface QueryBuilderProps {
   handleDeleteTemplate: (name: string, type: 'primary' | 'secondary') => void;
   handleSearchCriteriaChange: (column: string, value: string, isSecondary: boolean) => void;
   handleSearchOperatorChange: (column: string, operator: SearchOperator, isSecondary: boolean) => void;
+  handleClearSearchCriteria: (type: 'primary' | 'secondary') => void;
 }
 
 export default function QueryBuilder({
@@ -93,7 +95,28 @@ export default function QueryBuilder({
   handleDeleteTemplate,
   handleSearchCriteriaChange,
   handleSearchOperatorChange,
+  handleClearSearchCriteria,
 }: QueryBuilderProps) {
+  const [primaryColFilter, setPrimaryColFilter] = useState('');
+  const [secondaryColFilter, setSecondaryColFilter] = useState('');
+  const [primaryDisplayFilter, setPrimaryDisplayFilter] = useState('');
+  const [secondaryDisplayFilter, setSecondaryDisplayFilter] = useState('');
+
+  const filteredPrimarySearchHeaders = primaryColFilter.trim()
+    ? primaryDataHeaders.filter(col => col.toLowerCase().includes(primaryColFilter.toLowerCase()))
+    : primaryDataHeaders;
+
+  const filteredSecondarySearchHeaders = secondaryColFilter.trim()
+    ? secondaryDataHeaders.filter(col => col.toLowerCase().includes(secondaryColFilter.toLowerCase()))
+    : secondaryDataHeaders;
+
+  const filteredPrimaryDisplayHeaders = primaryDisplayFilter.trim()
+    ? primaryDataHeaders.filter(col => col.toLowerCase().includes(primaryDisplayFilter.toLowerCase()))
+    : primaryDataHeaders;
+
+  const filteredSecondaryDisplayHeaders = secondaryDisplayFilter.trim()
+    ? secondaryDataHeaders.filter(col => col.toLowerCase().includes(secondaryDisplayFilter.toLowerCase()))
+    : secondaryDataHeaders;
 
   const handleMoveDisplayColumn = (index: number, direction: 'up' | 'down', type: 'primary' | 'secondary') => {
     const newIndex = direction === 'up' ? index - 1 : index + 1;
@@ -129,25 +152,46 @@ export default function QueryBuilder({
                 <CardContent className="flex-grow">
                   <Accordion type="multiple" defaultValue={['search-cols', 'display-cols']} className="w-full">
                     <AccordionItem value="search-cols">
-                      <AccordionTrigger>Kolom Pencarian</AccordionTrigger>
-                      <AccordionContent className="space-y-2 max-h-48 overflow-y-auto pr-4">
-                        {primaryDataHeaders.map((col, index) => (
-                          <div key={`search-${col}-${index}`} className="flex items-center space-x-2">
-                            <Checkbox id={`search-${col}-${index}`} onCheckedChange={(checked) => handleSearchColumnToggle(col, !!checked)} checked={searchColumns.has(col)} />
-                            <Label htmlFor={`search-${col}-${index}`} className="font-normal cursor-pointer flex-1">{col}</Label>
-                          </div>
-                        ))}
+                      <AccordionTrigger>Kolom Pencarian ({searchColumns.size} dipilih)</AccordionTrigger>
+                      <AccordionContent className="space-y-2">
+                        {primaryDataHeaders.length > 6 && (
+                          <Input
+                            placeholder="Saring nama kolom..."
+                            value={primaryColFilter}
+                            onChange={(e) => setPrimaryColFilter(e.target.value)}
+                            className="h-8 text-xs mb-2"
+                          />
+                        )}
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-4">
+                          {filteredPrimarySearchHeaders.map((col, index) => (
+                            <div key={`search-${col}-${index}`} className="flex items-center space-x-2">
+                              <Checkbox id={`search-${col}-${index}`} onCheckedChange={(checked) => handleSearchColumnToggle(col, !!checked)} checked={searchColumns.has(col)} />
+                              <Label htmlFor={`search-${col}-${index}`} className="font-normal cursor-pointer flex-1">{col}</Label>
+                            </div>
+                          ))}
+                          {filteredPrimarySearchHeaders.length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">Tidak ada kolom yang cocok.</p>
+                          )}
+                        </div>
                       </AccordionContent>
                     </AccordionItem>
                      <AccordionItem value="display-cols">
-                        <AccordionTrigger>Kolom Tampilan & Format</AccordionTrigger>
+                        <AccordionTrigger>Kolom Tampilan & Format ({displayColumns.length} dipilih)</AccordionTrigger>
                         <AccordionContent className="space-y-2">
                           <div className="flex items-center space-x-2 pb-2 border-b">
-                            <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={primaryDataHeaders ? displayColumns.length === primaryDataHeaders.length : false} />
+                            <Checkbox id="display-all" onCheckedChange={(checked) => handleSelectAllDisplayColumns(!!checked)} checked={primaryDataHeaders.length > 0 && displayColumns.length === primaryDataHeaders.length} />
                             <Label htmlFor="display-all" className="font-semibold">Pilih Semua</Label>
                           </div>
+                          {primaryDataHeaders.length > 6 && (
+                            <Input
+                              placeholder="Saring kolom tampilan..."
+                              value={primaryDisplayFilter}
+                              onChange={(e) => setPrimaryDisplayFilter(e.target.value)}
+                              className="h-8 text-xs my-2"
+                            />
+                          )}
                           <div className="max-h-96 overflow-y-auto pr-2 pt-2 space-y-1">
-                            {primaryDataHeaders.map((col, i) => {
+                            {filteredPrimaryDisplayHeaders.map((col, i) => {
                               const isDisplayed = displayColumns.includes(col);
                               const index = displayColumns.indexOf(col);
                               return (
@@ -221,11 +265,22 @@ export default function QueryBuilder({
               </div>
               {/* Primary Search Criteria */}
               <div className="flex flex-col">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="flex items-center gap-2">
                         {currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}
                         Kriteria Pencarian
                     </CardTitle>
+                    {Array.from(searchColumns).length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleClearSearchCriteria('primary')}
+                        className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1 px-2"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Kosongkan Kriteria
+                      </Button>
+                    )}
                 </CardHeader>
                 <CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">
                   {Array.from(searchColumns).length > 0 ? Array.from(searchColumns).map((col, index) => (
@@ -271,25 +326,46 @@ export default function QueryBuilder({
                 <CardContent className="flex-grow">
                   <Accordion type="multiple" defaultValue={['secondary-search-cols', 'secondary-display-cols']} className="w-full">
                     <AccordionItem value="secondary-search-cols">
-                      <AccordionTrigger>Kolom Pencarian</AccordionTrigger>
-                      <AccordionContent className="space-y-2 max-h-48 overflow-y-auto pr-4">
-                        {secondaryDataHeaders.map((col, index) => (
-                          <div key={`secondary-search-${col}-${index}`} className="flex items-center space-x-2">
-                            <Checkbox id={`secondary-search-${col}-${index}`} onCheckedChange={(checked) => handleSecondarySearchColumnToggle(col, !!checked)} checked={secondarySearchColumns.has(col)} />
-                            <Label htmlFor={`secondary-search-${col}-${index}`} className="font-normal cursor-pointer flex-1">{col}</Label>
-                          </div>
-                        ))}
+                      <AccordionTrigger>Kolom Pencarian ({secondarySearchColumns.size} dipilih)</AccordionTrigger>
+                      <AccordionContent className="space-y-2">
+                        {secondaryDataHeaders.length > 6 && (
+                          <Input
+                            placeholder="Saring nama kolom..."
+                            value={secondaryColFilter}
+                            onChange={(e) => setSecondaryColFilter(e.target.value)}
+                            className="h-8 text-xs mb-2"
+                          />
+                        )}
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-4">
+                          {filteredSecondarySearchHeaders.map((col, index) => (
+                            <div key={`secondary-search-${col}-${index}`} className="flex items-center space-x-2">
+                              <Checkbox id={`secondary-search-${col}-${index}`} onCheckedChange={(checked) => handleSecondarySearchColumnToggle(col, !!checked)} checked={secondarySearchColumns.has(col)} />
+                              <Label htmlFor={`secondary-search-${col}-${index}`} className="font-normal cursor-pointer flex-1">{col}</Label>
+                            </div>
+                          ))}
+                          {filteredSecondarySearchHeaders.length === 0 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">Tidak ada kolom yang cocok.</p>
+                          )}
+                        </div>
                       </AccordionContent>
                     </AccordionItem>
                     <AccordionItem value="secondary-display-cols">
-                      <AccordionTrigger>Kolom Tampilan & Format</AccordionTrigger>
+                      <AccordionTrigger>Kolom Tampilan & Format ({secondaryDisplayColumns.length} dipilih)</AccordionTrigger>
                        <AccordionContent className="space-y-2">
                         <div className="flex items-center space-x-2 pb-2 border-b">
-                          <Checkbox id="secondary-display-all" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryDataHeaders ? secondaryDisplayColumns.length === secondaryDataHeaders.length : false} />
+                          <Checkbox id="secondary-display-all" onCheckedChange={(checked) => handleSelectAllSecondaryDisplayColumns(!!checked)} checked={secondaryDataHeaders.length > 0 && secondaryDisplayColumns.length === secondaryDataHeaders.length} />
                           <Label htmlFor="secondary-display-all" className="font-semibold">Pilih Semua</Label>
                         </div>
+                        {secondaryDataHeaders.length > 6 && (
+                          <Input
+                            placeholder="Saring kolom tampilan..."
+                            value={secondaryDisplayFilter}
+                            onChange={(e) => setSecondaryDisplayFilter(e.target.value)}
+                            className="h-8 text-xs my-2"
+                          />
+                        )}
                         <div className="max-h-96 overflow-y-auto pr-2 pt-2 space-y-1">
-                          {secondaryDataHeaders.map((col, i) => {
+                          {filteredSecondaryDisplayHeaders.map((col, i) => {
                             const isDisplayed = secondaryDisplayColumns.includes(col);
                             const index = secondaryDisplayColumns.indexOf(col);
                             return (
@@ -363,11 +439,22 @@ export default function QueryBuilder({
               </div>
               {/* Secondary Search Criteria */}
               <div className="flex flex-col">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="flex items-center gap-2">
                         {currentTheme === 'pink' ? <Sparkle className="w-5 h-5"/> : <Search className="w-5 h-5"/>}
                         Kriteria Pencarian
                     </CardTitle>
+                    {Array.from(secondarySearchColumns).length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleClearSearchCriteria('secondary')}
+                        className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1 px-2"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Kosongkan Kriteria
+                      </Button>
+                    )}
                 </CardHeader>
                 <CardContent className="flex-grow space-y-4 overflow-y-auto pr-4">
                   {Array.from(secondarySearchColumns).length > 0 ? Array.from(secondarySearchColumns).map((col, index) => (

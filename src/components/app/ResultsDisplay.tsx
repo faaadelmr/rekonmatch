@@ -1,11 +1,12 @@
 
 "use client";
 
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Columns, Copy, Search } from "lucide-react";
+import { Columns, Copy, Search, Download } from "lucide-react";
 import { type Row } from "@/lib/mock-data";
 import { type ColumnType } from "@/hooks/useExcelMatcher";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ interface ResultsDisplayProps {
   secondaryLinkColumn: string;
   isProcessing: boolean;
   handleCopyResults: (dataToCopy: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>) => void;
+  handleExportExcel: (dataToExport: Row[] | null, columns: string[], colTypes: Record<string, ColumnType>, type: 'primary' | 'secondary') => void;
   handleRowClick: (row: Row) => void;
   handleSecondaryRowClick: (row: Row) => void;
   formatCell: (value: any, type?: ColumnType) => string;
@@ -44,11 +46,22 @@ export default function ResultsDisplay({
   secondaryLinkColumn,
   isProcessing,
   handleCopyResults,
+  handleExportExcel,
   handleRowClick,
   handleSecondaryRowClick,
   formatCell,
   secondaryDataHeaders
 }: ResultsDisplayProps) {
+  const [primaryLimit, setPrimaryLimit] = useState(100);
+  const [secondaryLimit, setSecondaryLimit] = useState(100);
+
+  useEffect(() => {
+    setPrimaryLimit(100);
+  }, [filteredResults]);
+
+  useEffect(() => {
+    setSecondaryLimit(100);
+  }, [secondaryFilteredResults]);
   
   const renderRow = (row: Row, index: number, isSecondary: boolean) => {
     const columns = isSecondary ? secondaryDisplayColumns : displayColumns;
@@ -104,14 +117,27 @@ export default function ResultsDisplay({
             <TabsTrigger value="secondary" disabled={secondaryDataHeaders.length === 0}>Hasil Kueri Sekunder</TabsTrigger>
           </TabsList>
           <TabsContent value="primary" className="mt-4">
-            <div className="flex items-center justify-between my-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 my-4">
               <p className="text-sm text-muted-foreground">
                 {filteredResults ? `${filteredResults.filter(r => !r.__isNotFound && !r.__isEmpty && !r.__isDuplicate).length} data cocok dari ${filteredResults.length} baris hasil.` : ''}
                 {isLinkingEnabled && primaryLinkColumn && secondaryLinkColumn && ' Klik ikon pencarian untuk melihat data terkait.'}
               </p>
-              <Button variant="outline" onClick={() => handleCopyResults(filteredResults, displayColumns, columnTypes)} disabled={!filteredResults || filteredResults.length === 0}>
-                <Copy className="w-4 h-4 mr-2" />Salin Hasil Utama
-              </Button>
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <Button
+                  variant="outline"
+                  onClick={() => handleExportExcel(filteredResults, displayColumns, columnTypes, 'primary')}
+                  disabled={!filteredResults || filteredResults.length === 0}
+                >
+                  <Download className="w-4 h-4 mr-2" />Unduh Excel (.xlsx)
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleCopyResults(filteredResults, displayColumns, columnTypes)}
+                  disabled={!filteredResults || filteredResults.length === 0}
+                >
+                  <Copy className="w-4 h-4 mr-2" />Salin Hasil Utama
+                </Button>
+              </div>
             </div>
             <div className="overflow-x-auto border rounded-lg">
               <Table>
@@ -127,7 +153,7 @@ export default function ResultsDisplay({
                 </TableHeader>
                 <TableBody>
                   {filteredResults && filteredResults.length > 0 ? (
-                    filteredResults.map((row, index) => renderRow(row, index, false))
+                    filteredResults.slice(0, primaryLimit).map((row, index) => renderRow(row, index, false))
                   ) : (
                     <TableRow>
                       <TableCell colSpan={displayColumns.length + 1 || 2} className="h-48 text-center text-muted-foreground">
@@ -137,16 +163,54 @@ export default function ResultsDisplay({
                   )}
                 </TableBody>
               </Table>
+              {filteredResults && filteredResults.length > primaryLimit && (
+                <div className="flex flex-col sm:flex-row items-center justify-between p-3 border-t bg-muted/20 text-xs text-muted-foreground gap-2">
+                  <span>
+                    Menampilkan <strong>{Math.min(primaryLimit, filteredResults.length)}</strong> dari <strong>{filteredResults.length}</strong> baris (Salin & Unduh Excel menyertakan 100% data).
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPrimaryLimit(prev => Math.min(prev + 200, filteredResults.length))}
+                      className="h-7 text-xs"
+                    >
+                      Tampilkan +200 Baris
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPrimaryLimit(Math.min(filteredResults.length, 2000))}
+                      className="h-7 text-xs"
+                    >
+                      {filteredResults.length > 2000 ? 'Tampilkan Maks (2.000)' : 'Tampilkan Semua'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="secondary" className="mt-4">
-            <div className="flex items-center justify-between my-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 my-4">
               <p className="text-sm text-muted-foreground">
                 {secondaryFilteredResults ? `${secondaryFilteredResults.filter(r => !r.__isNotFound && !r.__isEmpty && !r.__isDuplicate).length} data cocok dari ${secondaryFilteredResults.length} baris hasil.` : ''}
               </p>
-              <Button variant="outline" onClick={() => handleCopyResults(secondaryFilteredResults, secondaryDisplayColumns, columnTypes)} disabled={!secondaryFilteredResults || secondaryFilteredResults.length === 0}>
-                <Copy className="w-4 h-4 mr-2" />Salin Hasil Sekunder
-              </Button>
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <Button
+                  variant="outline"
+                  onClick={() => handleExportExcel(secondaryFilteredResults, secondaryDisplayColumns, columnTypes, 'secondary')}
+                  disabled={!secondaryFilteredResults || secondaryFilteredResults.length === 0}
+                >
+                  <Download className="w-4 h-4 mr-2" />Unduh Excel (.xlsx)
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => handleCopyResults(secondaryFilteredResults, secondaryDisplayColumns, columnTypes)}
+                  disabled={!secondaryFilteredResults || secondaryFilteredResults.length === 0}
+                >
+                  <Copy className="w-4 h-4 mr-2" />Salin Hasil Sekunder
+                </Button>
+              </div>
             </div>
             <div className="overflow-x-auto border rounded-lg">
               <Table>
@@ -162,7 +226,7 @@ export default function ResultsDisplay({
                 </TableHeader>
                 <TableBody>
                   {secondaryFilteredResults && secondaryFilteredResults.length > 0 ? (
-                    secondaryFilteredResults.map((row, index) => renderRow(row, index, true))
+                    secondaryFilteredResults.slice(0, secondaryLimit).map((row, index) => renderRow(row, index, true))
                   ) : (
                     <TableRow>
                       <TableCell colSpan={secondaryDisplayColumns.length + 1 || 2} className="h-48 text-center text-muted-foreground">
@@ -172,6 +236,31 @@ export default function ResultsDisplay({
                   )}
                 </TableBody>
               </Table>
+              {secondaryFilteredResults && secondaryFilteredResults.length > secondaryLimit && (
+                <div className="flex flex-col sm:flex-row items-center justify-between p-3 border-t bg-muted/20 text-xs text-muted-foreground gap-2">
+                  <span>
+                    Menampilkan <strong>{Math.min(secondaryLimit, secondaryFilteredResults.length)}</strong> dari <strong>{secondaryFilteredResults.length}</strong> baris (Salin & Unduh Excel menyertakan 100% data).
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSecondaryLimit(prev => Math.min(prev + 200, secondaryFilteredResults.length))}
+                      className="h-7 text-xs"
+                    >
+                      Tampilkan +200 Baris
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSecondaryLimit(Math.min(secondaryFilteredResults.length, 2000))}
+                      className="h-7 text-xs"
+                    >
+                      {secondaryFilteredResults.length > 2000 ? 'Tampilkan Maks (2.000)' : 'Tampilkan Semua'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>

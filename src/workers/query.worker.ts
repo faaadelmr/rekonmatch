@@ -9,28 +9,145 @@ interface SearchCriterion {
 
 type Row = Record<string, any>;
 
-const checkMatch = (value: any, operator: SearchOperator, lowerTerm: string): boolean => {
+interface StoredDataset {
+  rows: Row[];
+  lowerRows: Record<string, string>[];
+  equalsIndexes: Record<string, Map<string, number[]>>;
+}
+
+interface DataStreamBuilder {
+  safeRows: Row[];
+  lowerRows: Record<string, string>[];
+}
+
+const datasets: Record<string, StoredDataset> = {};
+const streamBuilders: Record<string, DataStreamBuilder> = {};
+
+function sanitizeRow(row: Row): Row {
+  const safe: Row = {};
+  for (const k in row) {
+    const v = row[k];
+    safe[k] = typeof v === 'bigint' ? v.toString() : v;
+  }
+  return safe;
+}
+
+function processAndStoreData(type: string, dataRows: Row[]) {
+  const safeRows: Row[] = [];
+  const lowerRows: Record<string, string>[] = [];
+
+  for (let i = 0; i < dataRows.length; i++) {
+    const safeRow = sanitizeRow(dataRows[i]);
+    safeRows.push(safeRow);
+
+    const lowerRow: Record<string, string> = {};
+    for (const col in safeRow) {
+      const val = safeRow[col];
+      lowerRow[col] = val !== null && val !== undefined ? String(val).toLowerCase() : '';
+    }
+    lowerRows.push(lowerRow);
+  }
+
+  datasets[type] = {
+    rows: safeRows,
+    lowerRows,
+    equalsIndexes: {},
+  };
+}
+
+const checkMatch = (lowerVal: string, operator: SearchOperator, lowerTerm: string): boolean => {
   if (lowerTerm === '') return false;
-  const val = String(value ?? '').toLowerCase();
   switch (operator) {
-    case 'contains': return val.includes(lowerTerm);
-    case 'equals': return val === lowerTerm;
-    case 'startsWith': return val.startsWith(lowerTerm);
-    case 'endsWith': return val.endsWith(lowerTerm);
+    case 'contains': return lowerVal.includes(lowerTerm);
+    case 'equals': return lowerVal === lowerTerm;
+    case 'startsWith': return lowerVal.startsWith(lowerTerm);
+    case 'endsWith': return lowerVal.endsWith(lowerTerm);
     default: return false;
   }
 };
 
 self.onmessage = (event: MessageEvent) => {
   const {
+    action,
     type,
+    datasetType,
     dataRows,
+    chunk,
     activeCriteria,
     headers,
     includeEmptyRowsInResults
   } = event.data;
 
   try {
+    // 1. Handle dataset streaming chunks (prevents DataCloneError on large datasets)
+    if (action === 'initDataStream' && datasetType) {
+      streamBuilders[datasetType] = { safeRows: [], lowerRows: [] };
+      return;
+    }
+
+    if (action === 'appendDataChunk' && datasetType && Array.isArray(chunk)) {
+      const builder = streamBuilders[datasetType];
+      if (builder) {
+        for (let i = 0; i < chunk.length; i++) {
+          const safeRow = sanitizeRow(chunk[i]);
+          builder.safeRows.push(safeRow);
+
+          const lowerRow: Record<string, string> = {};
+          for (const col in safeRow) {
+            const val = safeRow[col];
+            lowerRow[col] = val !== null && val !== undefined ? String(val).toLowerCase() : '';
+          }
+          builder.lowerRows.push(lowerRow);
+        }
+      }
+      return;
+    }
+
+    if (action === 'finalizeDataStream' && datasetType) {
+      const builder = streamBuilders[datasetType];
+      if (builder) {
+        datasets[datasetType] = {
+          rows: builder.safeRows,
+          lowerRows: builder.lowerRows,
+          equalsIndexes: {},
+        };
+        delete streamBuilders[datasetType];
+        self.postMessage({ type: 'datasetSynced', datasetType });
+      }
+      return;
+    }
+
+    // 2. Handle direct dataset sync action for small datasets
+    if (action === 'setData' && datasetType && Array.isArray(dataRows)) {
+      processAndStoreData(datasetType, dataRows);
+      self.postMessage({ type: 'datasetSynced', datasetType });
+      return;
+    }
+
+    // 3. Handle clear dataset action
+    if (action === 'clearData') {
+      delete datasets.primary;
+      delete datasets.secondary;
+      delete streamBuilders.primary;
+      delete streamBuilders.secondary;
+      self.postMessage({ type: 'dataCleared' });
+      return;
+    }
+
+    // 4. Fallback or initial data caching if dataRows provided in query message
+    const targetType = type as string;
+    if (Array.isArray(dataRows)) {
+      processAndStoreData(targetType, dataRows);
+    }
+
+    const stored = datasets[targetType];
+    if (!stored || !stored.rows || stored.rows.length === 0) {
+      self.postMessage({ type, results: [] });
+      return;
+    }
+
+    const { rows: currentDataRows, lowerRows } = stored;
+
     // Pre-lowercase searching terms
     const criteriaValuesByCol = Object.entries(activeCriteria).reduce((acc, [col, crit]) => {
       acc[col] = (crit as SearchCriterion).value.split(/\r\n|\n|\r/).map(t => t.trim().toLowerCase());
@@ -48,26 +165,28 @@ self.onmessage = (event: MessageEvent) => {
       parsedCriteriaByRow.push(rowCriteria);
     }
 
-    // Pre-build index maps for columns that use 'equals' operator to speed up matching
-    const equalsIndexes: Record<string, Map<string, Row[]>> = {};
+    // Pre-build / reuse index maps of row indices for columns that use 'equals' operator
+    const equalsIndexes = stored.equalsIndexes || (stored.equalsIndexes = {});
     Object.entries(activeCriteria).forEach(([col, crit]) => {
       const c = crit as SearchCriterion;
-      if (c.operator === 'equals') {
-        const map = new Map<string, Row[]>();
-        dataRows.forEach((row: Row) => {
-          const val = String(row[col] ?? '').toLowerCase();
-          if (!map.has(val)) {
-            map.set(val, []);
+      if (c.operator === 'equals' && !equalsIndexes[col]) {
+        const map = new Map<string, number[]>();
+        for (let i = 0; i < lowerRows.length; i++) {
+          const val = lowerRows[i][col] || '';
+          let list = map.get(val);
+          if (!list) {
+            list = [];
+            map.set(val, list);
           }
-          map.get(val)!.push(row);
-        });
+          list.push(i);
+        }
         equalsIndexes[col] = map;
       }
     });
 
     const finalResults: Row[] = [];
     const processedCriteria = new Set<string>();
-    const foundRowsTracker = new Set<string>();
+    const foundRowIndices = new Set<number>();
 
     for (const termRow of parsedCriteriaByRow) {
       const termKey = JSON.stringify(Object.entries(termRow).sort());
@@ -82,44 +201,69 @@ self.onmessage = (event: MessageEvent) => {
 
       if (processedCriteria.has(termKey)) {
         if (includeEmptyRowsInResults) {
-          finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
+          finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
         }
         continue;
       }
       
       processedCriteria.add(termKey);
 
-      // Find if there is a column using 'equals' that we can use for O(1) initial filtering
+      // Find if there is a column using 'equals' that we can use for O(1) initial candidate filtering
       const equalsCol = Object.keys(termRow).find(col => 
         termRow[col] !== '' && termRow[col] !== undefined && (activeCriteria[col] as SearchCriterion)?.operator === 'equals'
       );
 
-      let candidates = dataRows;
+      let candidateIndices: number[] | null = null;
       if (equalsCol) {
         const termVal = termRow[equalsCol];
-        candidates = equalsIndexes[equalsCol].get(termVal) || [];
+        candidateIndices = equalsIndexes[equalsCol]?.get(termVal) || [];
       }
 
-      const foundMatches = candidates.filter((dataRow: Row) => 
-        Object.entries(termRow).every(([col, term]) => {
-          if (term === '' || term === undefined) return true;
-          return checkMatch(dataRow[col], (activeCriteria[col] as SearchCriterion).operator, term);
-        })
-      );
+      const matchIndices: number[] = [];
+      const criteriaEntries = Object.entries(termRow).filter(([, term]) => term !== '' && term !== undefined);
 
-      if (foundMatches.length > 0) {
+      if (candidateIndices !== null) {
+        for (let k = 0; k < candidateIndices.length; k++) {
+          const idx = candidateIndices[k];
+          const lRow = lowerRows[idx];
+          let matched = true;
+          for (let c = 0; c < criteriaEntries.length; c++) {
+            const [col, term] = criteriaEntries[c];
+            if (!checkMatch(lRow[col] || '', (activeCriteria[col] as SearchCriterion).operator, term)) {
+              matched = false;
+              break;
+            }
+          }
+          if (matched) matchIndices.push(idx);
+        }
+      } else {
+        for (let idx = 0; idx < lowerRows.length; idx++) {
+          const lRow = lowerRows[idx];
+          let matched = true;
+          for (let c = 0; c < criteriaEntries.length; c++) {
+            const [col, term] = criteriaEntries[c];
+            if (!checkMatch(lRow[col] || '', (activeCriteria[col] as SearchCriterion).operator, term)) {
+              matched = false;
+              break;
+            }
+          }
+          if (matched) matchIndices.push(idx);
+        }
+      }
+
+      if (matchIndices.length > 0) {
         let newMatchesFound = 0;
-        foundMatches.forEach((match: Row) => {
-          const uniqueKey = JSON.stringify(match);
-          if (!foundRowsTracker.has(uniqueKey)) {
-            foundRowsTracker.add(uniqueKey);
-            finalResults.push({ ...match, __searchCriteria: termRow });
+        for (let m = 0; m < matchIndices.length; m++) {
+          const rowIdx = matchIndices[m];
+          if (!foundRowIndices.has(rowIdx)) {
+            foundRowIndices.add(rowIdx);
+            finalResults.push({ ...currentDataRows[rowIdx], __searchCriteria: termRow });
             newMatchesFound++;
           }
-        });
+        }
 
         if (newMatchesFound === 0 && includeEmptyRowsInResults) {
-          finalResults.push({ __isEmpty: true, __searchCriteria: termRow });
+          finalResults.push({ __isDuplicate: true, __searchCriteria: termRow });
         }
       } else {
         const notFoundRow: Row = { __isNotFound: true, __searchCriteria: termRow };
